@@ -152,6 +152,12 @@ export default function KanbanApp() {
   }, []);
 
   useEffect(() => {
+    if (!isLoaded) return;
+    const t = boardTitle.trim() || DEFAULT_BOARD_TITLE;
+    document.title = t;
+  }, [boardTitle, isLoaded]);
+
+  useEffect(() => {
     if (isEditingBoardTitle) {
       titleInputRef.current?.focus();
       titleInputRef.current?.select();
@@ -426,6 +432,38 @@ export default function KanbanApp() {
     }, 0);
   };
 
+  const deleteCardQuick = (colId: string, cardId: string) => {
+    if (!window.confirm("Apagar este cartão?")) return;
+    updateColumns((prev) =>
+      prev.map((col) =>
+        col.id === colId
+          ? {
+              ...col,
+              cards: col.cards.filter((c) => c.id !== cardId),
+            }
+          : col
+      )
+    );
+    if (editingCard?.card.id === cardId && editingCard.colId === colId) {
+      setEditingCard(null);
+      setConfirmDelete(false);
+    }
+  };
+
+  const deleteColumnBlock = (colId: string, cardCount: number) => {
+    if (columns.length <= 1) {
+      window.alert("Tem de existir pelo menos uma coluna.");
+      return;
+    }
+    const msg =
+      cardCount > 0
+        ? `Apagar esta coluna e os ${cardCount} cartão(ões)?`
+        : "Apagar esta coluna vazia?";
+    if (!window.confirm(msg)) return;
+    updateColumns((prev) => prev.filter((c) => c.id !== colId));
+    if (editingColumn?.colId === colId) setEditingColumn(null);
+  };
+
   // ============================================================================
   // RENDER (APPLE PREMIUM GRAYSCALE THEME)
   // ============================================================================
@@ -657,11 +695,22 @@ export default function KanbanApp() {
                     </>
                   )}
                 </div>
-                <span
-                  className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium flex-shrink-0 ${theme.inputBg} ${theme.textMuted}`}
-                >
-                  {col.cards.length}
-                </span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => deleteColumnBlock(col.id, col.cards.length)}
+                    className={`p-1 rounded-md transition-opacity opacity-0 group-hover/col:opacity-100 max-md:opacity-100 text-red-500/80 hover:text-red-500 ${theme.textMuted}`}
+                    aria-label="Apagar coluna"
+                    title="Apagar coluna"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  <span
+                    className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium ${theme.inputBg} ${theme.textMuted}`}
+                  >
+                    {col.cards.length}
+                  </span>
+                </div>
               </div>
 
               {/* Área dos Cartões */}
