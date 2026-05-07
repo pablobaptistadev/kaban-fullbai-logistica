@@ -647,10 +647,11 @@ export default function KanbanApp() {
               onDrop={(e) => handleDrop(e, col.id)}
             >
               {/* Header da Coluna */}
+              {/* Cabeçalho: group/col em toda a faixa para hover e lixo sempre visível */}
               <div
-                className={`p-5 pb-3 flex justify-between items-start gap-2 rounded-t-2xl min-w-0`}
+                className={`group/col p-5 pb-3 flex justify-between items-start gap-2 rounded-t-2xl min-w-0`}
               >
-                <div className="group/col flex items-center gap-1 min-w-0 flex-1">
+                <div className="flex items-center gap-1 min-w-0 flex-1">
                   {editingColumn?.colId === col.id ? (
                     <input
                       ref={columnInputRef}
@@ -699,11 +700,11 @@ export default function KanbanApp() {
                   <button
                     type="button"
                     onClick={() => deleteColumnBlock(col.id, col.cards.length)}
-                    className={`p-1 rounded-md transition-opacity opacity-0 group-hover/col:opacity-100 max-md:opacity-100 text-red-500/80 hover:text-red-500 ${theme.textMuted}`}
+                    className={`p-1.5 rounded-lg shrink-0 text-red-500/90 hover:text-red-500 hover:bg-red-500/10 transition-colors`}
                     aria-label="Apagar coluna"
-                    title="Apagar coluna"
+                    title="Apagar esta coluna"
                   >
-                    <Trash2 size={15} />
+                    <Trash2 size={16} />
                   </button>
                   <span
                     className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium ${theme.inputBg} ${theme.textMuted}`}
