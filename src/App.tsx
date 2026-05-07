@@ -9,6 +9,7 @@ import {
   Server,
   Loader2,
   FolderPlus,
+  LayoutGrid,
 } from "lucide-react";
 
 import type { Card, Column, Workspace } from "./types/kanban";
@@ -410,6 +411,21 @@ export default function KanbanApp() {
     openEdit(colId, newCard);
   };
 
+  const addNewColumn = () => {
+    const newId = "col-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8);
+    updateColumns((prev) => [
+      ...prev,
+      {
+        id: newId,
+        title: "Nova coluna",
+        cards: [],
+      },
+    ]);
+    setTimeout(() => {
+      openEditColumn(newId, "Nova coluna");
+    }, 0);
+  };
+
   // ============================================================================
   // RENDER (APPLE PREMIUM GRAYSCALE THEME)
   // ============================================================================
@@ -687,6 +703,21 @@ export default function KanbanApp() {
               </div>
             </div>
           ))}
+
+          <button
+            type="button"
+            onClick={addNewColumn}
+            className={`flex-shrink-0 w-[300px] min-h-[200px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 px-4 py-10 transition-colors ${theme.textMuted} border-current/25 hover:border-current/50 hover:${theme.inputBg} ${theme.text}`}
+            aria-label="Adicionar nova coluna"
+          >
+            <LayoutGrid size={24} strokeWidth={1.5} />
+            <span className="text-sm font-semibold text-center leading-snug">
+              Nova coluna
+            </span>
+            <span className="text-[11px] opacity-70 text-center">
+              Novo bloco de cartões
+            </span>
+          </button>
         </div>
 
         {/* MODAL DE EDIÇÃO */}
