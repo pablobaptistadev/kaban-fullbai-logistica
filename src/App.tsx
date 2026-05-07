@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  Grip,
   Edit3,
   Plus,
   X,
@@ -8,15 +7,29 @@ import {
   RotateCcw,
   Sun,
   Moon,
-  Check,
   Server,
   Loader2,
 } from "lucide-react";
 
+type Card = {
+  id: string;
+  title: string;
+  content: string;
+};
+
+type Column = {
+  id: string;
+  title: string;
+  cards: Card[];
+};
+
+type EditingCardState = { colId: string; card: Card };
+type DraggedCardState = { card: Card; colId: string };
+
 // ============================================================================
 // DADOS INICIAIS (FLUXO LOGÍSTICO)
 // ============================================================================
-const defaultData = [
+const defaultData: Column[] = [
   {
     id: "col-1",
     title: "Origem & Preparação",
@@ -98,9 +111,13 @@ const defaultData = [
 ];
 
 export default function KanbanApp() {
-  const [columns, setColumns] = useState([]);
-  const [editingCard, setEditingCard] = useState(null);
-  const [draggedCard, setDraggedCard] = useState(null);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [editingCard, setEditingCard] = useState<EditingCardState | null>(
+    null
+  );
+  const [draggedCard, setDraggedCard] = useState<DraggedCardState | null>(
+    null
+  );
   const [isDark, setIsDark] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -135,7 +152,9 @@ export default function KanbanApp() {
   // ============================================================================
   // FUNÇÃO CENTRAL PARA ATUALIZAR E SALVAR LOCALMENTE
   // ============================================================================
-  const updateColumns = (newColsOrUpdater) => {
+  const updateColumns = (
+    newColsOrUpdater: Column[] | ((prev: Column[]) => Column[])
+  ) => {
     setIsSaving(true);
     setColumns((prev) => {
       const newCols =
@@ -164,30 +183,36 @@ export default function KanbanApp() {
   // ============================================================================
   // DRAG & DROP LOGIC
   // ============================================================================
-  const handleDragStart = (e, card, colId) => {
+  const handleDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    card: Card,
+    colId: string
+  ) => {
     setDraggedCard({ card, colId });
     setTimeout(() => {
-      e.target.style.opacity = "0.4";
+      (e.target as HTMLElement).style.opacity = "0.4";
     }, 0);
   };
 
-  const handleDragEnd = (e) => {
-    e.target.style.opacity = "1";
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    (e.target as HTMLElement).style.opacity = "1";
     setDraggedCard(null);
   };
 
-  const handleDragOver = (e) => e.preventDefault();
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) =>
+    e.preventDefault();
 
-  const handleDrop = (e, targetColId) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, targetColId: string) => {
     e.preventDefault();
     if (!draggedCard) return;
     const { card, colId: sourceColId } = draggedCard;
     if (sourceColId === targetColId) return;
 
     updateColumns((prev) => {
-      const newCols = JSON.parse(JSON.stringify(prev)); // Deep copy
+      const newCols = JSON.parse(JSON.stringify(prev)) as Column[]; // Deep copy
       const sourceCol = newCols.find((c) => c.id === sourceColId);
       const targetCol = newCols.find((c) => c.id === targetColId);
+      if (!sourceCol || !targetCol) return prev;
 
       sourceCol.cards = sourceCol.cards.filter((c) => c.id !== card.id);
       targetCol.cards.push(card);
@@ -198,19 +223,21 @@ export default function KanbanApp() {
   // ============================================================================
   // EDIT LOGIC
   // ============================================================================
-  const openEdit = (colId, card) => {
+  const openEdit = (colId: string, card: Card) => {
     setEditingCard({ colId, card: { ...card } });
     setConfirmDelete(false);
   };
 
   const saveEdit = () => {
+    if (!editingCard) return;
+    const { colId, card: editCard } = editingCard;
     updateColumns((prev) =>
       prev.map((col) => {
-        if (col.id === editingCard.colId) {
+        if (col.id === colId) {
           return {
             ...col,
             cards: col.cards.map((c) =>
-              c.id === editingCard.card.id ? editingCard.card : c
+              c.id === editCard.id ? editCard : c
             ),
           };
         }
@@ -221,12 +248,14 @@ export default function KanbanApp() {
   };
 
   const handleDelete = () => {
+    if (!editingCard) return;
+    const { colId, card: delCard } = editingCard;
     updateColumns((prev) =>
       prev.map((col) => {
-        if (col.id === editingCard.colId) {
+        if (col.id === colId) {
           return {
             ...col,
-            cards: col.cards.filter((c) => c.id !== editingCard.card.id),
+            cards: col.cards.filter((c) => c.id !== delCard.id),
           };
         }
         return col;
@@ -236,8 +265,8 @@ export default function KanbanApp() {
     setConfirmDelete(false);
   };
 
-  const addNewCard = (colId) => {
-    const newCard = {
+  const addNewCard = (colId: string) => {
+    const newCard: Card = {
       id: "card-" + Date.now(),
       title: "Nova Etapa",
       content: "Descreva a etapa aqui...",
