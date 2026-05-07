@@ -1,30 +1,30 @@
 import type { Column, KanbanProject } from "../types/kanban";
 
 /**
- * Quadro referência: fluxo Fullbai Logística (8 colunas, diagrama de arquitetura).
+ * Quadro referência Fullbai Logística — alinhado ao diagrama de 8 colunas (PREIS / PREIS API).
  */
 export const FULLBAI_LOGISTICA_COLUMNS: Column[] = [
   {
     id: "fb-col-order",
-    title: "Order Create",
+    title: "Order Created",
     cards: [
       {
         id: "fb-o1",
         title: "Order Creation",
         content:
-          "• Plataforma externa envia pedido\n• POST /api/v1/orders\n• Componente: API Gateway",
+          "• Database trigger POST order data…\n• POST Deploy Webhook\n• Componente: API Gateway",
       },
       {
         id: "fb-o2",
         title: "Background Processing",
         content:
-          "• Worker processa pedidos e clientes\n• Componente: Background Worker",
+          "• Worker scans order database for…\n• Componente: Background Worker",
       },
       {
         id: "fb-o3",
-        title: "Status: pending / consolidação",
+        title: "Status pending or pending_arrival",
         content:
-          "• Multi-seller à espera de consolidação\n• Componente: Order Management",
+          "• Webhook for status wait for…\n• Componente: Order Management",
       },
     ],
   },
@@ -36,37 +36,37 @@ export const FULLBAI_LOGISTICA_COLUMNS: Column[] = [
         id: "fb-s1",
         title: "Seller Marks Ready",
         content:
-          "• Vendedor marca itens prontos\n• POST /api/v1/seller/ready-products\n• Componente: Admin UI",
+          "• Seller clicks \"Mark as ready for…\"\n• Admin tool outputting print labels\n• Componente: Admin UI",
       },
       {
         id: "fb-s2",
-        title: "POST Items Ready",
+        title: "POST Ready Status",
         content:
-          "• Atualiza status pending → ready\n• POST /api/v1/ready-products\n• Componente: API Gateway",
+          "• Status changes from pending → ready\n• POST tracking number to order database…\n• Componente: API Gateway",
       },
     ],
   },
   {
-    id: "fb-col-picking",
-    title: "OPERATOR PICKING",
+    id: "fb-col-measure",
+    title: "MEASURING/RECEIVE",
     cards: [
       {
         id: "fb-p1",
         title: "Operator Scans Products",
         content:
-          "• Operador bipa / serial\n• Componentes: Admin UI / mobile-prod-app",
+          "• Operator scans bar code to mark as…\n• Admin / Worker Interface\n• Componente: Admin UI",
       },
       {
         id: "fb-p2",
-        title: "POST Scan",
+        title: "POST Flow",
         content:
-          "• Status ready → delivered (à empresa)\n• POST /api/v1/delivery\n• Componente: API Gateway",
+          "• Status ready → received (entry point…)\n• POST Weight / Dimension\n• Componente: API Gateway",
       },
       {
         id: "fb-p3",
-        title: "Auto-propagation",
+        title: "Auto-propagate",
         content:
-          "• Triggers internos de propagação do scan\n• Componente: Database Function",
+          "• Trigger gets triggered when all…\n• Componente: Database Function",
       },
     ],
   },
@@ -78,124 +78,127 @@ export const FULLBAI_LOGISTICA_COLUMNS: Column[] = [
         id: "fb-c1",
         title: "POST Consolidate",
         content:
-          "• Regras de embalagem (volumétrico, etc.)\n• POST /api/v1/consolidate\n• Componente: API Gateway",
+          "• Apply Paraguay Customs rules (if any…)\n• POST consolidated parcel data\n• Componente: API Gateway",
       },
       {
         id: "fb-c2",
         title: "Create Packages",
         content:
-          "• Gera packages logísticos\n• Componente: Package Management",
+          "• Generate shipping label / package per…\n• Componente: Package Management",
       },
     ],
   },
   {
     id: "fb-col-manifest",
-    title: "MANIFEST CREATION (PRESS)",
+    title: "MANIFEST CREATION (PREIS API)",
     cards: [
       {
         id: "fb-m1",
         title: "Admin Creates Cargo Manifest",
-        content: "• Lista de packages no manifest\n• Componente: Admin UI",
+        content:
+          "• Create manifest with status \"draft\"\n• Admin manages manifest\n• Componente: Admin UI",
       },
       {
         id: "fb-m2",
-        title: "Set Provider",
+        title: "Set Airwaybill",
         content:
-          "• Provider internacional (ex.: ReCar / PRESS)\n• Componente: Manifest Management",
+          "• Set international airwaybill for the cargo…\n• Componente: Manifest Management",
       },
       {
         id: "fb-m3",
         title: "Add Packages to Manifest",
         content:
-          "• Vários packages no mesmo manifest\n• Componente: Manifest Management",
+          "• Admin confirms packages in manifest\n• Componente: Manifest Management",
       },
     ],
   },
   {
     id: "fb-col-dispatch",
-    title: "INTERNATIONAL DISPATCH (PRESS)",
+    title: "INTERNATIONAL DISPATCH (PREIS)",
     cards: [
       {
         id: "fb-d1",
-        title: "Dispatch Button",
+        title: "Dispatch Batch",
         content:
-          "• Admin dispara envio internacional\n• POST /api/v1/admin/cargo-manifest...\n• Componente: Admin UI",
+          "• Trigger dispatch process\n• POST digital manifest / copy manifest…\n• Componente: Admin UI",
       },
       {
         id: "fb-d2",
-        title: "manifest-orchestrator",
+        title: "Manifest with status",
         content:
-          "• Mensagens com dados do manifest\n• Componente: Orchestrator service",
+          "• Documentations with manifest list…\n• Componente: Orchestrator Service",
       },
       {
         id: "fb-d3",
-        title: "PRESS API Calls",
-        content: "• Integração API externa PRESS\n• Componente: External Integration",
+        title: "PREIS API Calls",
+        content:
+          "• Many-to-one manifest → …\n• PREIS API\n• Componente: External Integration",
       },
       {
         id: "fb-d4",
-        title: "Save Tracking",
+        title: "Scan Tracking",
         content:
-          "• PRESS devolve tracking → gravar\n• Componente: Database",
+          "• PREIS returns tracking / security code…\n• Componente: Database",
       },
       {
         id: "fb-d5",
         title: "Update Status",
         content:
-          "• Manifest → dispatched\n• Componente: Order Management",
+          "• Many-to-one manifest → dispatched…\n• Componente: Order Management",
       },
     ],
   },
   {
     id: "fb-col-transit",
-    title: "IN TRANSIT (PRESS tracking)",
+    title: "IN TRANSIT (PREIS Tracking)",
     cards: [
       {
         id: "fb-t1",
-        title: "Flight / TR → AR",
+        title: "Take Flight",
         content:
-          "• Etapas: recolha aeroporto, voos internacionais, etc.",
+          "• Airport pick up / manifest loading…\n• Componente: Logistics",
       },
       {
         id: "fb-t2",
-        title: "PRESS Events",
+        title: "PREIS Events",
         content:
-          "• Webhook POST ou polling\n• POST /api/v1/webhook-exchange\n• Componente: Webhook Handler",
+          "• Webhook / Poller getting every status…\n• POST status to order database\n• Componente: Webhook Handler",
       },
       {
         id: "fb-t3",
         title: "Status Mapping",
         content:
-          "• Ex.: 001_in_customs, 002_in_transit → internos\n• Componente: Status Mapper",
+          "• 201 → in_transit, 202 → cleared_customs…\n• Componente: Status Mapper",
       },
     ],
   },
   {
     id: "fb-col-lastmile",
-    title: "LAST MILE (Delivery)",
+    title: "LAST MILE (Local Carrier)",
     cards: [
       {
         id: "fb-l1",
         title: "Handover Last Mile",
         content:
-          "• Aduana e entrega ao motorista última milha",
+          "• Webhook triggers Manifest Out…\n• Webhook Poller",
       },
       {
         id: "fb-l2",
-        title: "New tracking Number",
+        title: "New Tracking Number",
         content:
-          "• Tracking courier local\n• Componente: Tracking Management",
+          "• Local log return new tracking…\n• Componente: Tracking Management",
       },
       {
         id: "fb-l3",
-        title: "Order status: out_for_delivery",
-        content: "• En route ao cliente\n• Componente: Order Management",
+        title: "out_for_delivery",
+        content:
+          "• Package in route to customer home\n• Componente: Order Management",
       },
       {
         id: "fb-l4",
         title: "Final Delivery",
         content:
-          "• Webhook entrega final\n• POST /api/v1/webhook-delivery\n• Componente: Webhook Handler",
+          "• Webhook triggers final status…\n• POST deploy webhook / client flag\n• Componente: Webhook Handler",
       },
     ],
   },
