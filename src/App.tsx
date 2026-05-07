@@ -11,17 +11,12 @@ import {
   Loader2,
 } from "lucide-react";
 
-type Card = {
-  id: string;
-  title: string;
-  content: string;
-};
-
-type Column = {
-  id: string;
-  title: string;
-  cards: Card[];
-};
+import type { Card, Column } from "./types/kanban";
+import { supabaseConfigured } from "./lib/supabase";
+import {
+  loadFromCloud,
+  scheduleSaveToCloud,
+} from "./lib/cloudKanban";
 
 type EditingCardState = { colId: string; card: Card };
 type DraggedCardState = { card: Card; colId: string };
@@ -130,37 +125,84 @@ export default function KanbanApp() {
   const boardTitleSnapshot = useRef(DEFAULT_BOARD_TITLE);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipTitleBlurCommit = useRef(false);
+  const columnsRef = useRef<Column[]>([]);
+  const boardTitleRef = useRef(DEFAULT_BOARD_TITLE);
+
+  useEffect(() => {
+    columnsRef.current = columns;
+  }, [columns]);
+
+  useEffect(() => {
+    boardTitleRef.current = boardTitle;
+  }, [boardTitle]);
 
   // ============================================================================
   // INJETAR TAILWIND CSS & CARREGAR DADOS DO LOCALSTORAGE
   // ============================================================================
   useEffect(() => {
-    // 1. Injetar o Tailwind CSS no CodeSandbox automaticamente
-    if (!document.getElementById("tailwind-script")) {
-      const script = document.createElement("script");
-      script.id = "tailwind-script";
-      script.src = "https://cdn.tailwindcss.com";
-      document.head.appendChild(script);
-    }
+    let cancelled = false;
 
-    // 2. Carregar os dados guardados
-    const saved = localStorage.getItem("kanban_logistica_v2");
-    if (saved) {
-      try {
-        setColumns(JSON.parse(saved));
-      } catch (e) {
-        setColumns(defaultData);
+    async function init() {
+      // 1. Injetar o Tailwind CSS no CodeSandbox automaticamente
+      if (!document.getElementById("tailwind-script")) {
+        const script = document.createElement("script");
+        script.id = "tailwind-script";
+        script.src = "https://cdn.tailwindcss.com";
+        document.head.appendChild(script);
       }
-    } else {
-      setColumns(defaultData);
+
+      // 2. Nuvem Supabase (se VITE_SUPABASE_* estiver definido)
+      if (supabaseConfigured) {
+        try {
+          const cloud = await loadFromCloud();
+          if (cancelled) return;
+          if (cloud) {
+            setColumns(cloud.columns);
+            setBoardTitle(cloud.boardTitle);
+            localStorage.setItem(
+              "kanban_logistica_v2",
+              JSON.stringify(cloud.columns)
+            );
+            localStorage.setItem(BOARD_TITLE_KEY, cloud.boardTitle);
+            setIsLoaded(true);
+            return;
+          }
+        } catch (e) {
+          console.warn("Nuvem indisponível, a usar dados locais.", e);
+        }
+      }
+
+      // 3. LocalStorage / defaults
+      let cols: Column[] = defaultData;
+      const saved = localStorage.getItem("kanban_logistica_v2");
+      if (saved) {
+        try {
+          cols = JSON.parse(saved);
+        } catch {
+          cols = defaultData;
+        }
+      }
+
+      let titleNext = DEFAULT_BOARD_TITLE;
+      const savedTitle = localStorage.getItem(BOARD_TITLE_KEY);
+      if (savedTitle) titleNext = savedTitle;
+
+      if (cancelled) return;
+      setColumns(cols);
+      setBoardTitle(titleNext);
+
+      if (supabaseConfigured) {
+        scheduleSaveToCloud(cols, titleNext);
+      }
+
+      setIsLoaded(true);
     }
 
-    const savedTitle = localStorage.getItem(BOARD_TITLE_KEY);
-    if (savedTitle) {
-      setBoardTitle(savedTitle);
-    }
+    void init();
 
-    setIsLoaded(true);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -186,6 +228,8 @@ export default function KanbanApp() {
       // Salva no navegador do utilizador
       localStorage.setItem("kanban_logistica_v2", JSON.stringify(newCols));
 
+      scheduleSaveToCloud(newCols, boardTitleRef.current);
+
       setTimeout(() => setIsSaving(false), 500); // feedback visual rápido
       return newCols;
     });
@@ -197,9 +241,10 @@ export default function KanbanApp() {
         "Deseja repor o fluxo original? Todas as suas alterações serão perdidas."
       )
     ) {
-      updateColumns(defaultData);
       setBoardTitle(DEFAULT_BOARD_TITLE);
+      boardTitleRef.current = DEFAULT_BOARD_TITLE;
       localStorage.removeItem(BOARD_TITLE_KEY);
+      updateColumns(defaultData);
     }
   };
 
@@ -212,6 +257,7 @@ export default function KanbanApp() {
     setBoardTitle((prev) => {
       const trimmed = prev.trim() || DEFAULT_BOARD_TITLE;
       localStorage.setItem(BOARD_TITLE_KEY, trimmed);
+      scheduleSaveToCloud(columnsRef.current, trimmed);
       return trimmed;
     });
     setIsEditingBoardTitle(false);
@@ -441,7 +487,11 @@ export default function KanbanApp() {
                 ) : (
                   <Server size={10} />
                 )}
-                {isSaving ? "A guardar..." : "Guardado Localmente"}
+                {isSaving
+                  ? "A guardar..."
+                  : supabaseConfigured
+                    ? "Local + nuvem (Supabase)"
+                    : "Só neste dispositivo"}
               </span>
             </div>
           </div>
