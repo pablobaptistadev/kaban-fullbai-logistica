@@ -18,6 +18,7 @@ create table if not exists public.kanban_board (
   board_title text not null default 'Fluxo Logístico',
   columns jsonb not null default '[]'::jsonb,
   theme_dark boolean not null default true,
+  workspace jsonb,
   updated_at timestamptz not null default now()
 );
 

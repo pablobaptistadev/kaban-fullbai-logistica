@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Edit3,
   Plus,
@@ -8,109 +8,30 @@ import {
   Moon,
   Server,
   Loader2,
+  FolderPlus,
 } from "lucide-react";
 
-import type { Card, Column } from "./types/kanban";
+import type { Card, Column, Workspace } from "./types/kanban";
 import { supabaseConfigured } from "./lib/supabase";
+import { loadFromCloud, scheduleSaveToCloud } from "./lib/cloudKanban";
 import {
-  loadFromCloud,
-  scheduleSaveToCloud,
-} from "./lib/cloudKanban";
+  loadWorkspaceFromLocal,
+  saveWorkspaceToLocal,
+  createBlankProject,
+} from "./lib/workspaceStorage";
 
 type EditingCardState = { colId: string; card: Card };
 type DraggedCardState = { card: Card; colId: string };
 type EditingColumnState = { colId: string; title: string };
 
-const BOARD_TITLE_KEY = "kanban_logistica_board_title_v1";
 const THEME_KEY = "kanban_logistica_theme_v1";
-const DEFAULT_BOARD_TITLE = "Fluxo Logístico";
-
-// ============================================================================
-// DADOS INICIAIS (FLUXO LOGÍSTICO)
-// ============================================================================
-const defaultData: Column[] = [
-  {
-    id: "col-1",
-    title: "Origem & Preparação",
-    cards: [
-      {
-        id: "c1",
-        title: "FASE 1: Intake (Loja)",
-        content:
-          "• Cellshop / Fullbai\n• POST /api/v1/orders\n• Payload: external_order_id, customer...\n• Status: pending\n• BG: R2 images + PDF Code128",
-      },
-      {
-        id: "c2",
-        title: "FASE 2: Seller (Listo)",
-        content:
-          '• /admin/seller/pending-products\n• Vendedor clica "Marcar como listo"\n• POST /.../ready\n• Status: ready',
-      },
-    ],
-  },
-  {
-    id: "col-2",
-    title: "Hub Asunción (PY)",
-    cards: [
-      {
-        id: "c3",
-        title: "FASE 3: HUB CDE (Recebe)",
-        content:
-          "• /admin/receive-products\n• Operador bipa scan_code\n• POST /api/v1/cde/scan\n• Status: delivered (PY)",
-      },
-      {
-        id: "c4",
-        title: "FASE 4: Consolidação",
-        content:
-          "• POST /api/v1/cde/consolidate\n• Regra Aduana PY: +3 unidades familia\n• Cria logistics.package (PKG-...)",
-      },
-    ],
-  },
-  {
-    id: "col-3",
-    title: "Internacional (Aduana)",
-    cards: [
-      {
-        id: "c5",
-        title: "FASE 5: Cargo Manifest",
-        content:
-          "• Admin cria manifest (POST)\n• Provider: RaCargo (PRESIS)\n• Status: open",
-      },
-      {
-        id: "c6",
-        title: "FASE 6: Embarque Presis",
-        content:
-          "• Worker: dispatchRacargo()\n• Carga Preclasificacion (fatura, codMaria)\n• Recebe codigoSeguimiento\n• Manifest: dispatched / Order: shipped",
-      },
-      {
-        id: "c7",
-        title: "FASE 7: Tracking (AR)",
-        content:
-          "• Voo PY -> AR -> Aduana\n• Webhooks PRESIS ou Polling 30m\n• 001(customs) / 002(transit) / 003(delivered depot)",
-      },
-    ],
-  },
-  {
-    id: "col-4",
-    title: "Última Milha (AR)",
-    cards: [
-      {
-        id: "c8",
-        title: "FASE 8: Última Milla",
-        content:
-          "• OcaDriver / FixyDriver acionados\n• OCA/Fixy ATIVOS (tracking próprio)\n• RaCargo is_active=false (Handoff)\n• Status: out_for_delivery",
-      },
-      {
-        id: "c9",
-        title: "Entrega Final",
-        content:
-          "• Webhook OCA/Fixy confirma\n• Cliente recebe na porta\n• Status: delivered",
-      },
-    ],
-  },
-];
+const DEFAULT_BOARD_TITLE = "Fullbai Logística";
 
 export default function KanbanApp() {
-  const [columns, setColumns] = useState<Column[]>([]);
+  const [workspace, setWorkspace] = useState<Workspace>({
+    projects: [],
+    activeProjectId: "",
+  });
   const [editingCard, setEditingCard] = useState<EditingCardState | null>(
     null
   );
@@ -125,28 +46,43 @@ export default function KanbanApp() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
+  const workspaceRef = useRef<Workspace>({
+    projects: [],
+    activeProjectId: "",
+  });
+
+  useEffect(() => {
+    workspaceRef.current = workspace;
+  }, [workspace]);
+
+  const activeProject = useMemo(() => {
+    return (
+      workspace.projects.find((p) => p.id === workspace.activeProjectId) ??
+      workspace.projects[0]
+    );
+  }, [workspace.projects, workspace.activeProjectId]);
+
+  const columns = activeProject?.columns ?? [];
   const [isEditingBoardTitle, setIsEditingBoardTitle] = useState(false);
   const boardTitleSnapshot = useRef(DEFAULT_BOARD_TITLE);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipTitleBlurCommit = useRef(false);
-  const columnsRef = useRef<Column[]>([]);
-  const boardTitleRef = useRef(DEFAULT_BOARD_TITLE);
   const isDarkRef = useRef(true);
   const columnInputRef = useRef<HTMLInputElement>(null);
   const skipColumnBlurCommit = useRef(false);
   const columnTitleSnapshot = useRef("");
 
   useEffect(() => {
-    columnsRef.current = columns;
-  }, [columns]);
-
-  useEffect(() => {
-    boardTitleRef.current = boardTitle;
-  }, [boardTitle]);
-
-  useEffect(() => {
     isDarkRef.current = isDark;
   }, [isDark]);
+
+  useEffect(() => {
+    if (isEditingBoardTitle) return;
+    const p = workspace.projects.find(
+      (x) => x.id === workspace.activeProjectId
+    );
+    if (p) setBoardTitle(p.boardTitle);
+  }, [workspace.activeProjectId, workspace.projects, isEditingBoardTitle]);
 
   // ============================================================================
   // INJETAR TAILWIND CSS & CARREGAR DADOS DO LOCALSTORAGE
@@ -155,7 +91,6 @@ export default function KanbanApp() {
     let cancelled = false;
 
     async function init() {
-      // 1. Injetar o Tailwind CSS no CodeSandbox automaticamente
       if (!document.getElementById("tailwind-script")) {
         const script = document.createElement("script");
         script.id = "tailwind-script";
@@ -163,21 +98,19 @@ export default function KanbanApp() {
         document.head.appendChild(script);
       }
 
-      // 2. Nuvem Supabase (se VITE_SUPABASE_* estiver definido)
       if (supabaseConfigured) {
         try {
           const cloud = await loadFromCloud();
           if (cancelled) return;
           if (cloud) {
-            setColumns(cloud.columns);
-            setBoardTitle(cloud.boardTitle);
+            setWorkspace(cloud.workspace);
+            saveWorkspaceToLocal(cloud.workspace);
+            const ap = cloud.workspace.projects.find(
+              (p) => p.id === cloud.workspace.activeProjectId
+            );
+            setBoardTitle(ap?.boardTitle ?? DEFAULT_BOARD_TITLE);
             setIsDark(cloud.themeDark);
             isDarkRef.current = cloud.themeDark;
-            localStorage.setItem(
-              "kanban_logistica_v2",
-              JSON.stringify(cloud.columns)
-            );
-            localStorage.setItem(BOARD_TITLE_KEY, cloud.boardTitle);
             localStorage.setItem(
               THEME_KEY,
               cloud.themeDark ? "dark" : "light"
@@ -190,34 +123,21 @@ export default function KanbanApp() {
         }
       }
 
-      // 3. LocalStorage / defaults
-      let cols: Column[] = defaultData;
-      const saved = localStorage.getItem("kanban_logistica_v2");
-      if (saved) {
-        try {
-          cols = JSON.parse(saved);
-        } catch {
-          cols = defaultData;
-        }
-      }
-
-      let titleNext = DEFAULT_BOARD_TITLE;
-      const savedTitle = localStorage.getItem(BOARD_TITLE_KEY);
-      if (savedTitle) titleNext = savedTitle;
-
+      const ws = loadWorkspaceFromLocal();
+      const ap = ws.projects.find((p) => p.id === ws.activeProjectId);
       let themeDark = true;
       const themeStored = localStorage.getItem(THEME_KEY);
       if (themeStored === "light") themeDark = false;
       if (themeStored === "dark") themeDark = true;
 
       if (cancelled) return;
-      setColumns(cols);
-      setBoardTitle(titleNext);
+      setWorkspace(ws);
+      setBoardTitle(ap?.boardTitle ?? DEFAULT_BOARD_TITLE);
       setIsDark(themeDark);
       isDarkRef.current = themeDark;
 
       if (supabaseConfigured) {
-        scheduleSaveToCloud(cols, titleNext, themeDark);
+        scheduleSaveToCloud(ws, themeDark);
       }
 
       setIsLoaded(true);
@@ -251,19 +171,21 @@ export default function KanbanApp() {
     newColsOrUpdater: Column[] | ((prev: Column[]) => Column[])
   ) => {
     setIsSaving(true);
-    setColumns((prev) => {
-      const newCols =
-        typeof newColsOrUpdater === "function"
-          ? newColsOrUpdater(prev)
-          : newColsOrUpdater;
-
-      // Salva no navegador do utilizador
-      localStorage.setItem("kanban_logistica_v2", JSON.stringify(newCols));
-
-      scheduleSaveToCloud(newCols, boardTitleRef.current, isDarkRef.current);
-
-      setTimeout(() => setIsSaving(false), 500); // feedback visual rápido
-      return newCols;
+    setWorkspace((prev) => {
+      const pid = prev.activeProjectId;
+      const newProjects = prev.projects.map((proj) => {
+        if (proj.id !== pid) return proj;
+        const newCols =
+          typeof newColsOrUpdater === "function"
+            ? newColsOrUpdater(proj.columns)
+            : newColsOrUpdater;
+        return { ...proj, columns: newCols };
+      });
+      const next = { ...prev, projects: newProjects };
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      setTimeout(() => setIsSaving(false), 500);
+      return next;
     });
   };
 
@@ -274,11 +196,19 @@ export default function KanbanApp() {
   };
 
   const commitBoardTitle = () => {
-    setBoardTitle((prev) => {
-      const trimmed = prev.trim() || DEFAULT_BOARD_TITLE;
-      localStorage.setItem(BOARD_TITLE_KEY, trimmed);
-      scheduleSaveToCloud(columnsRef.current, trimmed, isDarkRef.current);
-      return trimmed;
+    const trimmed = boardTitle.trim() || DEFAULT_BOARD_TITLE;
+    setBoardTitle(trimmed);
+    setWorkspace((w) => {
+      const pid = w.activeProjectId;
+      const next: Workspace = {
+        ...w,
+        projects: w.projects.map((p) =>
+          p.id === pid ? { ...p, boardTitle: trimmed, name: trimmed } : p
+        ),
+      };
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      return next;
     });
     setIsEditingBoardTitle(false);
   };
@@ -295,6 +225,57 @@ export default function KanbanApp() {
       return;
     }
     commitBoardTitle();
+  };
+
+  const switchActiveProject = (id: string) => {
+    setWorkspace((w) => {
+      const next = { ...w, activeProjectId: id };
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      return next;
+    });
+  };
+
+  const addProject = () => {
+    const name = window.prompt("Nome do novo projeto", "Novo projeto");
+    if (name === null) return;
+    const trimmed = name.trim() || "Novo projeto";
+    const p = createBlankProject();
+    p.name = trimmed;
+    p.boardTitle = trimmed;
+    setWorkspace((w) => {
+      const next = {
+        projects: [...w.projects, p],
+        activeProjectId: p.id,
+      };
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      return next;
+    });
+    setBoardTitle(trimmed);
+  };
+
+  const deleteActiveProject = () => {
+    if (workspace.projects.length <= 1) {
+      window.alert("Tem de existir pelo menos um projeto.");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Apagar este projeto? Esta ação não pode ser desfeita."
+      )
+    )
+      return;
+    setWorkspace((w) => {
+      const filtered = w.projects.filter((p) => p.id !== w.activeProjectId);
+      const next: Workspace = {
+        projects: filtered,
+        activeProjectId: filtered[0].id,
+      };
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      return next;
+    });
   };
 
   const openEditColumn = (colId: string, title: string) => {
@@ -481,6 +462,42 @@ export default function KanbanApp() {
       <div
         className={`min-h-screen font-dm p-4 md:p-8 flex flex-col transition-colors duration-300 ${theme.bg} ${theme.text}`}
       >
+        <div className="flex flex-wrap items-center gap-2 mb-6 w-full max-w-4xl">
+          <span className={`text-xs font-semibold uppercase tracking-wide ${theme.textMuted}`}>
+            Projeto
+          </span>
+          <select
+            value={workspace.activeProjectId}
+            onChange={(e) => switchActiveProject(e.target.value)}
+            className={`rounded-xl px-3 py-2.5 text-sm border outline-none min-w-[200px] flex-1 max-w-md ${theme.inputBg} ${theme.cardBorder} ${theme.text}`}
+            aria-label="Selecionar projeto"
+          >
+            {workspace.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={addProject}
+            className={`p-2.5 rounded-xl shrink-0 ${theme.btnSecondary}`}
+            title="Novo projeto"
+            aria-label="Novo projeto"
+          >
+            <FolderPlus size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={deleteActiveProject}
+            className={`p-2.5 rounded-xl shrink-0 ${theme.btnSecondary} text-red-500 hover:opacity-90`}
+            title="Apagar projeto atual"
+            aria-label="Apagar projeto atual"
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
+
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div>
@@ -527,7 +544,7 @@ export default function KanbanApp() {
             <div
               className={`text-sm mt-1 font-medium flex items-center gap-2 ${theme.textMuted}`}
             >
-              <span>Intake → Hub → Aduana → Delivery</span>
+              <span>Fullbai • vários projetos • fluxo ponta a ponta</span>
               <span
                 className="flex items-center gap-1 text-[11px] ml-2 px-2 py-0.5 rounded-full border opacity-70"
                 style={{ borderColor: "currentColor" }}
@@ -554,11 +571,7 @@ export default function KanbanApp() {
                   const next = !prev;
                   localStorage.setItem(THEME_KEY, next ? "dark" : "light");
                   isDarkRef.current = next;
-                  scheduleSaveToCloud(
-                    columnsRef.current,
-                    boardTitleRef.current,
-                    next
-                  );
+                  scheduleSaveToCloud(workspaceRef.current, next);
                   return next;
                 });
               }}

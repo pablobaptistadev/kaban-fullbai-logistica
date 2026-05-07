@@ -1,5 +1,6 @@
 import { supabase, supabaseConfigured } from "./supabase";
-import type { Column } from "../types/kanban";
+import type { Workspace } from "../types/kanban";
+import { defaultWorkspaceFullbai } from "./workspaceStorage";
 
 export const DEVICE_ID_KEY = "kanban_cloud_device_id_v1";
 
@@ -14,9 +15,16 @@ export function getOrCreateDeviceId(): string {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function activeSnapshot(w: Workspace) {
+  const active = w.projects.find((p) => p.id === w.activeProjectId);
+  return {
+    board_title: active?.boardTitle ?? "Fullbai Logística",
+    columns: active?.columns ?? [],
+  };
+}
+
 export function scheduleSaveToCloud(
-  columns: Column[],
-  boardTitle: string,
+  workspace: Workspace,
   themeDark: boolean,
   onDone?: (err: Error | null) => void
 ): void {
@@ -32,13 +40,15 @@ export function scheduleSaveToCloud(
   saveTimer = setTimeout(async () => {
     saveTimer = null;
     const id = getOrCreateDeviceId();
+    const legacy = activeSnapshot(workspace);
     try {
       const { error } = await client.from("kanban_board").upsert(
         {
           id,
-          board_title: boardTitle,
-          columns,
+          board_title: legacy.board_title,
+          columns: legacy.columns,
           theme_dark: themeDark,
+          workspace,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
@@ -51,8 +61,7 @@ export function scheduleSaveToCloud(
 }
 
 export async function loadFromCloud(): Promise<{
-  columns: Column[];
-  boardTitle: string;
+  workspace: Workspace;
   themeDark: boolean;
 } | null> {
   if (!supabaseConfigured || !supabase) return null;
@@ -60,16 +69,39 @@ export async function loadFromCloud(): Promise<{
   const id = getOrCreateDeviceId();
   const { data, error } = await supabase
     .from("kanban_board")
-    .select("board_title, columns, theme_dark")
+    .select("board_title, columns, theme_dark, workspace")
     .eq("id", id)
     .maybeSingle();
 
   if (error) throw error;
-  if (!data?.columns) return null;
+  if (!data) return null;
 
-  return {
-    boardTitle: data.board_title ?? "Fluxo Logístico",
-    columns: data.columns as Column[],
-    themeDark: data.theme_dark !== false,
-  };
+  const themeDark = data.theme_dark !== false;
+
+  const rawWs = data.workspace as Workspace | null | undefined;
+  if (
+    rawWs?.projects?.length &&
+    rawWs.projects.some((p) => p.id === rawWs.activeProjectId)
+  ) {
+    return { workspace: rawWs, themeDark };
+  }
+
+  if (data.columns && Array.isArray(data.columns)) {
+    const pid = crypto.randomUUID();
+    const title = data.board_title ?? "Fluxo Logístico";
+    const workspace: Workspace = {
+      projects: [
+        {
+          id: pid,
+          name: title,
+          boardTitle: title,
+          columns: data.columns as Workspace["projects"][0]["columns"],
+        },
+      ],
+      activeProjectId: pid,
+    };
+    return { workspace, themeDark };
+  }
+
+  return { workspace: defaultWorkspaceFullbai(), themeDark };
 }
