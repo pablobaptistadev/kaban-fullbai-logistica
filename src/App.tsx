@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Edit3,
   Plus,
@@ -25,6 +25,9 @@ type Column = {
 
 type EditingCardState = { colId: string; card: Card };
 type DraggedCardState = { card: Card; colId: string };
+
+const BOARD_TITLE_KEY = "kanban_logistica_board_title_v1";
+const DEFAULT_BOARD_TITLE = "Fluxo Logístico";
 
 // ============================================================================
 // DADOS INICIAIS (FLUXO LOGÍSTICO)
@@ -122,6 +125,11 @@ export default function KanbanApp() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
+  const [isEditingBoardTitle, setIsEditingBoardTitle] = useState(false);
+  const boardTitleSnapshot = useRef(DEFAULT_BOARD_TITLE);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const skipTitleBlurCommit = useRef(false);
 
   // ============================================================================
   // INJETAR TAILWIND CSS & CARREGAR DADOS DO LOCALSTORAGE
@@ -146,8 +154,21 @@ export default function KanbanApp() {
     } else {
       setColumns(defaultData);
     }
+
+    const savedTitle = localStorage.getItem(BOARD_TITLE_KEY);
+    if (savedTitle) {
+      setBoardTitle(savedTitle);
+    }
+
     setIsLoaded(true);
   }, []);
+
+  useEffect(() => {
+    if (isEditingBoardTitle) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [isEditingBoardTitle]);
 
   // ============================================================================
   // FUNÇÃO CENTRAL PARA ATUALIZAR E SALVAR LOCALMENTE
@@ -177,7 +198,37 @@ export default function KanbanApp() {
       )
     ) {
       updateColumns(defaultData);
+      setBoardTitle(DEFAULT_BOARD_TITLE);
+      localStorage.removeItem(BOARD_TITLE_KEY);
     }
+  };
+
+  const startEditBoardTitle = () => {
+    boardTitleSnapshot.current = boardTitle;
+    setIsEditingBoardTitle(true);
+  };
+
+  const commitBoardTitle = () => {
+    setBoardTitle((prev) => {
+      const trimmed = prev.trim() || DEFAULT_BOARD_TITLE;
+      localStorage.setItem(BOARD_TITLE_KEY, trimmed);
+      return trimmed;
+    });
+    setIsEditingBoardTitle(false);
+  };
+
+  const cancelEditBoardTitle = () => {
+    skipTitleBlurCommit.current = true;
+    setBoardTitle(boardTitleSnapshot.current);
+    setIsEditingBoardTitle(false);
+  };
+
+  const onBoardTitleBlur = () => {
+    if (skipTitleBlurCommit.current) {
+      skipTitleBlurCommit.current = false;
+      return;
+    }
+    commitBoardTitle();
   };
 
   // ============================================================================
@@ -337,9 +388,46 @@ export default function KanbanApp() {
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight flex items-center gap-2">
-              Fluxo Logístico
-            </h1>
+            <div className="group inline-flex items-center gap-1 max-w-full min-w-0">
+              {isEditingBoardTitle ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={boardTitle}
+                  onChange={(e) => setBoardTitle(e.target.value)}
+                  onBlur={onBoardTitleBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitBoardTitle();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEditBoardTitle();
+                    }
+                  }}
+                  className={`text-2xl md:text-3xl font-semibold tracking-tight bg-transparent border-b-2 border-current outline-none min-w-0 w-full max-w-[min(100%,28rem)] ${theme.text}`}
+                  aria-label="Título do quadro"
+                />
+              ) : (
+                <>
+                  <h1
+                    className="text-2xl md:text-3xl font-semibold tracking-tight truncate min-w-0 cursor-pointer"
+                    onClick={startEditBoardTitle}
+                  >
+                    {boardTitle}
+                  </h1>
+                  <button
+                    type="button"
+                    onClick={startEditBoardTitle}
+                    className={`flex-shrink-0 p-1.5 rounded-lg transition-opacity opacity-0 group-hover:opacity-100 max-md:opacity-100 ${theme.textMuted}`}
+                    aria-label="Editar título"
+                  >
+                    <Edit3 size={20} strokeWidth={1.75} />
+                  </button>
+                </>
+              )}
+            </div>
             <div
               className={`text-sm mt-1 font-medium flex items-center gap-2 ${theme.textMuted}`}
             >
