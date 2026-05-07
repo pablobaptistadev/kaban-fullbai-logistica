@@ -4,7 +4,6 @@ import {
   Plus,
   X,
   Trash2,
-  RotateCcw,
   Sun,
   Moon,
   Server,
@@ -20,8 +19,10 @@ import {
 
 type EditingCardState = { colId: string; card: Card };
 type DraggedCardState = { card: Card; colId: string };
+type EditingColumnState = { colId: string; title: string };
 
 const BOARD_TITLE_KEY = "kanban_logistica_board_title_v1";
+const THEME_KEY = "kanban_logistica_theme_v1";
 const DEFAULT_BOARD_TITLE = "Fluxo Logístico";
 
 // ============================================================================
@@ -113,6 +114,9 @@ export default function KanbanApp() {
   const [editingCard, setEditingCard] = useState<EditingCardState | null>(
     null
   );
+  const [editingColumn, setEditingColumn] = useState<EditingColumnState | null>(
+    null
+  );
   const [draggedCard, setDraggedCard] = useState<DraggedCardState | null>(
     null
   );
@@ -127,6 +131,10 @@ export default function KanbanApp() {
   const skipTitleBlurCommit = useRef(false);
   const columnsRef = useRef<Column[]>([]);
   const boardTitleRef = useRef(DEFAULT_BOARD_TITLE);
+  const isDarkRef = useRef(true);
+  const columnInputRef = useRef<HTMLInputElement>(null);
+  const skipColumnBlurCommit = useRef(false);
+  const columnTitleSnapshot = useRef("");
 
   useEffect(() => {
     columnsRef.current = columns;
@@ -135,6 +143,10 @@ export default function KanbanApp() {
   useEffect(() => {
     boardTitleRef.current = boardTitle;
   }, [boardTitle]);
+
+  useEffect(() => {
+    isDarkRef.current = isDark;
+  }, [isDark]);
 
   // ============================================================================
   // INJETAR TAILWIND CSS & CARREGAR DADOS DO LOCALSTORAGE
@@ -159,11 +171,17 @@ export default function KanbanApp() {
           if (cloud) {
             setColumns(cloud.columns);
             setBoardTitle(cloud.boardTitle);
+            setIsDark(cloud.themeDark);
+            isDarkRef.current = cloud.themeDark;
             localStorage.setItem(
               "kanban_logistica_v2",
               JSON.stringify(cloud.columns)
             );
             localStorage.setItem(BOARD_TITLE_KEY, cloud.boardTitle);
+            localStorage.setItem(
+              THEME_KEY,
+              cloud.themeDark ? "dark" : "light"
+            );
             setIsLoaded(true);
             return;
           }
@@ -187,12 +205,19 @@ export default function KanbanApp() {
       const savedTitle = localStorage.getItem(BOARD_TITLE_KEY);
       if (savedTitle) titleNext = savedTitle;
 
+      let themeDark = true;
+      const themeStored = localStorage.getItem(THEME_KEY);
+      if (themeStored === "light") themeDark = false;
+      if (themeStored === "dark") themeDark = true;
+
       if (cancelled) return;
       setColumns(cols);
       setBoardTitle(titleNext);
+      setIsDark(themeDark);
+      isDarkRef.current = themeDark;
 
       if (supabaseConfigured) {
-        scheduleSaveToCloud(cols, titleNext);
+        scheduleSaveToCloud(cols, titleNext, themeDark);
       }
 
       setIsLoaded(true);
@@ -212,6 +237,13 @@ export default function KanbanApp() {
     }
   }, [isEditingBoardTitle]);
 
+  useEffect(() => {
+    if (editingColumn) {
+      columnInputRef.current?.focus();
+      columnInputRef.current?.select();
+    }
+  }, [editingColumn]);
+
   // ============================================================================
   // FUNÇÃO CENTRAL PARA ATUALIZAR E SALVAR LOCALMENTE
   // ============================================================================
@@ -228,27 +260,15 @@ export default function KanbanApp() {
       // Salva no navegador do utilizador
       localStorage.setItem("kanban_logistica_v2", JSON.stringify(newCols));
 
-      scheduleSaveToCloud(newCols, boardTitleRef.current);
+      scheduleSaveToCloud(newCols, boardTitleRef.current, isDarkRef.current);
 
       setTimeout(() => setIsSaving(false), 500); // feedback visual rápido
       return newCols;
     });
   };
 
-  const resetToDefault = () => {
-    if (
-      window.confirm(
-        "Deseja repor o fluxo original? Todas as suas alterações serão perdidas."
-      )
-    ) {
-      setBoardTitle(DEFAULT_BOARD_TITLE);
-      boardTitleRef.current = DEFAULT_BOARD_TITLE;
-      localStorage.removeItem(BOARD_TITLE_KEY);
-      updateColumns(defaultData);
-    }
-  };
-
   const startEditBoardTitle = () => {
+    setEditingColumn(null);
     boardTitleSnapshot.current = boardTitle;
     setIsEditingBoardTitle(true);
   };
@@ -257,7 +277,7 @@ export default function KanbanApp() {
     setBoardTitle((prev) => {
       const trimmed = prev.trim() || DEFAULT_BOARD_TITLE;
       localStorage.setItem(BOARD_TITLE_KEY, trimmed);
-      scheduleSaveToCloud(columnsRef.current, trimmed);
+      scheduleSaveToCloud(columnsRef.current, trimmed, isDarkRef.current);
       return trimmed;
     });
     setIsEditingBoardTitle(false);
@@ -275,6 +295,35 @@ export default function KanbanApp() {
       return;
     }
     commitBoardTitle();
+  };
+
+  const openEditColumn = (colId: string, title: string) => {
+    setIsEditingBoardTitle(false);
+    columnTitleSnapshot.current = title;
+    setEditingColumn({ colId, title });
+  };
+
+  const commitEditColumn = () => {
+    if (!editingColumn) return;
+    const trimmed = editingColumn.title.trim() || "Sem título";
+    const colId = editingColumn.colId;
+    updateColumns((prev) =>
+      prev.map((c) => (c.id === colId ? { ...c, title: trimmed } : c))
+    );
+    setEditingColumn(null);
+  };
+
+  const cancelEditColumn = () => {
+    skipColumnBlurCommit.current = true;
+    setEditingColumn(null);
+  };
+
+  const onColumnTitleBlur = () => {
+    if (skipColumnBlurCommit.current) {
+      skipColumnBlurCommit.current = false;
+      return;
+    }
+    commitEditColumn();
   };
 
   // ============================================================================
@@ -321,6 +370,7 @@ export default function KanbanApp() {
   // EDIT LOGIC
   // ============================================================================
   const openEdit = (colId: string, card: Card) => {
+    setEditingColumn(null);
     setEditingCard({ colId, card: { ...card } });
     setConfirmDelete(false);
   };
@@ -498,16 +548,24 @@ export default function KanbanApp() {
 
           <div className="flex gap-2">
             <button
-              onClick={() => setIsDark(!isDark)}
+              type="button"
+              onClick={() => {
+                setIsDark((prev) => {
+                  const next = !prev;
+                  localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+                  isDarkRef.current = next;
+                  scheduleSaveToCloud(
+                    columnsRef.current,
+                    boardTitleRef.current,
+                    next
+                  );
+                  return next;
+                });
+              }}
               className={`p-2.5 rounded-full transition-colors flex items-center justify-center shadow-sm ${theme.btnSecondary}`}
+              aria-label={isDark ? "Tema claro" : "Tema escuro"}
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button
-              onClick={resetToDefault}
-              className={`px-4 py-2 rounded-full transition-colors text-sm font-medium flex items-center gap-2 shadow-sm ${theme.btnSecondary}`}
-            >
-              <RotateCcw size={16} /> Original
             </button>
           </div>
         </div>
@@ -523,11 +581,55 @@ export default function KanbanApp() {
             >
               {/* Header da Coluna */}
               <div
-                className={`p-5 pb-3 flex justify-between items-center rounded-t-2xl`}
+                className={`p-5 pb-3 flex justify-between items-start gap-2 rounded-t-2xl min-w-0`}
               >
-                <h2 className="font-semibold text-[15px]">{col.title}</h2>
+                <div className="group/col flex items-center gap-1 min-w-0 flex-1">
+                  {editingColumn?.colId === col.id ? (
+                    <input
+                      ref={columnInputRef}
+                      type="text"
+                      value={editingColumn.title}
+                      onChange={(e) =>
+                        setEditingColumn({
+                          colId: col.id,
+                          title: e.target.value,
+                        })
+                      }
+                      onBlur={onColumnTitleBlur}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitEditColumn();
+                        }
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          cancelEditColumn();
+                        }
+                      }}
+                      className={`font-semibold text-[15px] bg-transparent border-b border-current outline-none min-w-0 flex-1 ${theme.text}`}
+                      aria-label="Nome da coluna"
+                    />
+                  ) : (
+                    <>
+                      <h2
+                        className="font-semibold text-[15px] truncate min-w-0 cursor-pointer"
+                        onClick={() => openEditColumn(col.id, col.title)}
+                      >
+                        {col.title}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => openEditColumn(col.id, col.title)}
+                        className={`flex-shrink-0 p-1 rounded-md transition-opacity opacity-0 group-hover/col:opacity-100 max-md:opacity-100 ${theme.textMuted}`}
+                        aria-label="Editar nome da coluna"
+                      >
+                        <Edit3 size={16} strokeWidth={1.75} />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <span
-                  className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium ${theme.inputBg} ${theme.textMuted}`}
+                  className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium flex-shrink-0 ${theme.inputBg} ${theme.textMuted}`}
                 >
                   {col.cards.length}
                 </span>

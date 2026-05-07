@@ -7,7 +7,8 @@
 --    VITE_SUPABASE_URL=...
 --    VITE_SUPABASE_ANON_KEY=...
 --
--- Cada browser gera um UUID (guardado em localStorage) = uma linha na tabela.
+-- Se já criaste a tabela antes sem theme_dark, executa também:
+--   database/migration_theme_dark.sql
 -- Políticas abaixo permitem leitura/escrita anónima: ok para demo; em produção
 -- uses autenticação Supabase e políticas mais restritas.
 -- =============================================================================
@@ -16,6 +17,7 @@ create table if not exists public.kanban_board (
   id uuid primary key,
   board_title text not null default 'Fluxo Logístico',
   columns jsonb not null default '[]'::jsonb,
+  theme_dark boolean not null default true,
   updated_at timestamptz not null default now()
 );
 

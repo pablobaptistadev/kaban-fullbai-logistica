@@ -17,6 +17,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 export function scheduleSaveToCloud(
   columns: Column[],
   boardTitle: string,
+  themeDark: boolean,
   onDone?: (err: Error | null) => void
 ): void {
   if (!supabaseConfigured || !supabase) {
@@ -37,6 +38,7 @@ export function scheduleSaveToCloud(
           id,
           board_title: boardTitle,
           columns,
+          theme_dark: themeDark,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
@@ -51,13 +53,14 @@ export function scheduleSaveToCloud(
 export async function loadFromCloud(): Promise<{
   columns: Column[];
   boardTitle: string;
+  themeDark: boolean;
 } | null> {
   if (!supabaseConfigured || !supabase) return null;
 
   const id = getOrCreateDeviceId();
   const { data, error } = await supabase
     .from("kanban_board")
-    .select("board_title, columns")
+    .select("board_title, columns, theme_dark")
     .eq("id", id)
     .maybeSingle();
 
@@ -67,5 +70,6 @@ export async function loadFromCloud(): Promise<{
   return {
     boardTitle: data.board_title ?? "Fluxo Logístico",
     columns: data.columns as Column[],
+    themeDark: data.theme_dark !== false,
   };
 }
