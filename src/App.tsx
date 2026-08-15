@@ -86,19 +86,13 @@ export default function KanbanApp() {
   }, [workspace.activeProjectId, workspace.projects, isEditingBoardTitle]);
 
   // ============================================================================
-  // INJETAR TAILWIND CSS & CARREGAR DADOS DO LOCALSTORAGE
+  // CARREGAR DADOS DO LOCALSTORAGE / NUVEM
+  // (o Tailwind é compilado no build — ver src/styles.css e tailwind.config.js)
   // ============================================================================
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
-      if (!document.getElementById("tailwind-script")) {
-        const script = document.createElement("script");
-        script.id = "tailwind-script";
-        script.src = "https://cdn.tailwindcss.com";
-        document.head.appendChild(script);
-      }
-
       if (supabaseConfigured) {
         try {
           const cloud = await loadFromCloud();
@@ -502,17 +496,6 @@ export default function KanbanApp() {
 
   return (
     <>
-      <style>
-        {`
-          @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
-          .font-dm { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; }
-          /* Scrollbar estilo Apple */
-          ::-webkit-scrollbar { width: 8px; height: 8px; }
-          ::-webkit-scrollbar-track { background: transparent; }
-          ::-webkit-scrollbar-thumb { background: #86868B; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
-        `}
-      </style>
-
       <div
         className={`min-h-screen font-dm p-4 md:p-8 flex flex-col transition-colors duration-300 ${theme.bg} ${theme.text}`}
       >

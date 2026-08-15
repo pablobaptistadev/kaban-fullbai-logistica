@@ -1,4 +1,26 @@
-.App {
-  font-family: sans-serif;
-  text-align: center;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* Equivalente ao `.font-dm` que antes vinha do <style> inline no App.tsx. */
+  .font-dm {
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Scrollbar estilo Apple */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #86868b;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
