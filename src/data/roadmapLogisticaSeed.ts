@@ -1,9 +1,9 @@
 import type { Column, KanbanProject } from "../types/kanban";
 
 /**
- * Quadro referência Fullbai Logística — alinhado ao diagrama de 8 colunas (PREIS / PREIS API).
+ * Quadro referência Roadmap Logística — alinhado ao diagrama de 8 colunas (PREIS / PREIS API).
  */
-export const FULLBAI_LOGISTICA_COLUMNS: Column[] = [
+export const ROADMAP_LOGISTICA_COLUMNS: Column[] = [
   {
     id: "fb-col-order",
     title: "Order Created",
@@ -204,13 +204,13 @@ export const FULLBAI_LOGISTICA_COLUMNS: Column[] = [
   },
 ];
 
-export function createFullbaiLogisticaProject(): KanbanProject {
+export function createRoadmapLogisticaProject(): KanbanProject {
   const id = crypto.randomUUID();
   return {
     id,
-    name: "Fullbai Logística",
-    boardTitle: "Fullbai Logística",
-    columns: FULLBAI_LOGISTICA_COLUMNS.map((col) => ({
+    name: "Roadmap Logística",
+    boardTitle: "Roadmap Logística",
+    columns: ROADMAP_LOGISTICA_COLUMNS.map((col) => ({
       ...col,
       cards: col.cards.map((c) => ({ ...c })),
     })),

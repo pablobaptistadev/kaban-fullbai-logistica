@@ -1,5 +1,5 @@
 -- =============================================================================
--- Kanban Fullbai Logística — esquema PostgreSQL (ex.: Supabase SQL Editor)
+-- Kanban Roadmap Logística — esquema PostgreSQL (ex.: Supabase SQL Editor)
 -- =============================================================================
 -- 1. Cria um projeto em https://supabase.com
 -- 2. Em "SQL" → "New query" → cola este ficheiro → Run

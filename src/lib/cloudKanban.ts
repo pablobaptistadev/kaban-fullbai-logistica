@@ -1,6 +1,6 @@
 import { supabase, supabaseConfigured } from "./supabase";
 import type { Workspace } from "../types/kanban";
-import { defaultWorkspaceFullbai } from "./workspaceStorage";
+import { defaultWorkspaceRoadmap } from "./workspaceStorage";
 
 export const DEVICE_ID_KEY = "kanban_cloud_device_id_v1";
 
@@ -18,7 +18,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function activeSnapshot(w: Workspace) {
   const active = w.projects.find((p) => p.id === w.activeProjectId);
   return {
-    board_title: active?.boardTitle ?? "Fullbai Logística",
+    board_title: active?.boardTitle ?? "Roadmap Logística",
     columns: active?.columns ?? [],
   };
 }
@@ -103,5 +103,5 @@ export async function loadFromCloud(): Promise<{
     return { workspace, themeDark };
   }
 
-  return { workspace: defaultWorkspaceFullbai(), themeDark };
+  return { workspace: defaultWorkspaceRoadmap(), themeDark };
 }

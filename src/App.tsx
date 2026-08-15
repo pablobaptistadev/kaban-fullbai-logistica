@@ -26,7 +26,7 @@ type DraggedCardState = { card: Card; colId: string };
 type EditingColumnState = { colId: string; title: string };
 
 const THEME_KEY = "kanban_logistica_theme_v1";
-const DEFAULT_BOARD_TITLE = "Fullbai Logística";
+const DEFAULT_BOARD_TITLE = "Roadmap Logística";
 
 export default function KanbanApp() {
   const [workspace, setWorkspace] = useState<Workspace>({
@@ -598,7 +598,7 @@ export default function KanbanApp() {
             <div
               className={`text-sm mt-1 font-medium flex items-center gap-2 ${theme.textMuted}`}
             >
-              <span>Fullbai • vários projetos • fluxo ponta a ponta</span>
+              <span>Roadmap • vários projetos • fluxo ponta a ponta</span>
               <span
                 className="flex items-center gap-1 text-[11px] ml-2 px-2 py-0.5 rounded-full border opacity-70"
                 style={{ borderColor: "currentColor" }}

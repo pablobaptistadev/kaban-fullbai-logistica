@@ -1,5 +1,5 @@
 import type { Workspace } from "../types/kanban";
-import { createFullbaiLogisticaProject } from "../data/fullbaiLogisticaSeed";
+import { createRoadmapLogisticaProject } from "../data/roadmapLogisticaSeed";
 
 export const WORKSPACE_KEY = "kanban_workspace_v1";
 
@@ -24,12 +24,12 @@ export function createBlankProject() {
   };
 }
 
-export function defaultWorkspaceFullbai(): Workspace {
-  const p = createFullbaiLogisticaProject();
+export function defaultWorkspaceRoadmap(): Workspace {
+  const p = createRoadmapLogisticaProject();
   return { projects: [p], activeProjectId: p.id };
 }
 
-/** Migra formato antigo (uma lista de colunas) ou devolve default Fullbai. */
+/** Migra formato antigo (uma lista de colunas) ou devolve default Roadmap. */
 export function loadWorkspaceFromLocal(): Workspace {
   const raw = localStorage.getItem(WORKSPACE_KEY);
   if (raw) {
@@ -69,7 +69,7 @@ export function loadWorkspaceFromLocal(): Workspace {
     }
   }
 
-  return defaultWorkspaceFullbai();
+  return defaultWorkspaceRoadmap();
 }
 
 export function saveWorkspaceToLocal(w: Workspace): void {

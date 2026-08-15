@@ -1,0 +1,44 @@
+# Build e publicação no Cloudflare Workers (Static Assets).
+# Secrets necessários no repositório:
+#   CLOUDFLARE_API_TOKEN   → token com permissão "Workers Scripts: Edit"
+#   CLOUDFLARE_ACCOUNT_ID  → id da conta Cloudflare
+#   VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY → opcionais (sem eles a app fica só em localStorage)
+name: Deploy Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-workers
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install & build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          npm ci
+          npm run build:cf
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
