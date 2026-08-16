@@ -1,14 +1,15 @@
 import { supabase, supabaseConfigured } from "./supabase";
 import type { Workspace } from "../types/kanban";
 import { defaultWorkspaceRoadmap } from "./workspaceStorage";
+import { readLocal, writeLocal } from "./safeStorage";
 
 export const DEVICE_ID_KEY = "kanban_cloud_device_id_v1";
 
 export function getOrCreateDeviceId(): string {
-  let id = localStorage.getItem(DEVICE_ID_KEY);
+  let id = readLocal(DEVICE_ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem(DEVICE_ID_KEY, id);
+    writeLocal(DEVICE_ID_KEY, id);
   }
   return id;
 }

@@ -23,6 +23,7 @@ import type {
 } from "./types/kanban";
 import { isActive } from "./types/kanban";
 import { supabaseConfigured } from "./lib/supabase";
+import { isStorageWritable, readLocal, writeLocal } from "./lib/safeStorage";
 import { loadFromCloud, scheduleSaveToCloud } from "./lib/cloudKanban";
 import {
   loadWorkspaceFromLocal,
@@ -56,6 +57,8 @@ export default function KanbanApp() {
   );
   const [isDark, setIsDark] = useState(true);
   const [showArchive, setShowArchive] = useState(false);
+  // Falso em navegação privada do Safari e afins: aí nada fica guardado.
+  const [canStore] = useState(isStorageWritable);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
@@ -146,10 +149,7 @@ export default function KanbanApp() {
             setBoardTitle(ap?.boardTitle ?? DEFAULT_BOARD_TITLE);
             setIsDark(cloud.themeDark);
             isDarkRef.current = cloud.themeDark;
-            localStorage.setItem(
-              THEME_KEY,
-              cloud.themeDark ? "dark" : "light"
-            );
+            writeLocal(THEME_KEY, cloud.themeDark ? "dark" : "light");
             setIsLoaded(true);
             return;
           }
@@ -161,7 +161,7 @@ export default function KanbanApp() {
       const ws = loadWorkspaceFromLocal();
       const ap = ws.projects.find((p) => p.id === ws.activeProjectId);
       let themeDark = true;
-      const themeStored = localStorage.getItem(THEME_KEY);
+      const themeStored = readLocal(THEME_KEY);
       if (themeStored === "light") themeDark = false;
       if (themeStored === "dark") themeDark = true;
 
@@ -646,11 +646,13 @@ export default function KanbanApp() {
                 ) : (
                   <Server size={10} />
                 )}
-                {isSaving
-                  ? "A guardar..."
-                  : supabaseConfigured
-                    ? "Local + nuvem (Supabase)"
-                    : "Só neste dispositivo"}
+                {!canStore
+                  ? "Não está a guardar — navegação privada?"
+                  : isSaving
+                    ? "A guardar..."
+                    : supabaseConfigured
+                      ? "Local + nuvem (Supabase)"
+                      : "Só neste browser"}
               </span>
             </div>
           </div>
@@ -661,7 +663,7 @@ export default function KanbanApp() {
               onClick={() => {
                 setIsDark((prev) => {
                   const next = !prev;
-                  localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+                  writeLocal(THEME_KEY, next ? "dark" : "light");
                   isDarkRef.current = next;
                   scheduleSaveToCloud(workspaceRef.current, next);
                   return next;
