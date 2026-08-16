@@ -3,16 +3,25 @@ import {
   Edit3,
   Plus,
   X,
-  Trash2,
   Sun,
   Moon,
   Server,
   Loader2,
   FolderPlus,
   LayoutGrid,
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
-import type { Card, Column, Workspace } from "./types/kanban";
+import type {
+  Card,
+  Column,
+  Disableable,
+  Workspace,
+} from "./types/kanban";
+import { isActive } from "./types/kanban";
 import { supabaseConfigured } from "./lib/supabase";
 import { loadFromCloud, scheduleSaveToCloud } from "./lib/cloudKanban";
 import {
@@ -20,6 +29,9 @@ import {
   saveWorkspaceToLocal,
   createBlankProject,
 } from "./lib/workspaceStorage";
+
+/** Tokens de estilo do tema, partilhados com os subcomponentes. */
+type ThemeTokens = Record<string, string>;
 
 type EditingCardState = { colId: string; card: Card };
 type DraggedCardState = { card: Card; colId: string };
@@ -43,7 +55,7 @@ export default function KanbanApp() {
     null
   );
   const [isDark, setIsDark] = useState(true);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
@@ -63,7 +75,35 @@ export default function KanbanApp() {
     );
   }, [workspace.projects, workspace.activeProjectId]);
 
+  // `columns` é a lista completa (fonte de verdade para gravar); `activeColumns`
+  // é o que o quadro mostra. Os desativados ficam guardados para o histórico.
   const columns = activeProject?.columns ?? [];
+  const activeColumns = useMemo(() => columns.filter(isActive), [columns]);
+  const activeProjects = useMemo(
+    () => workspace.projects.filter(isActive),
+    [workspace.projects]
+  );
+
+  /**
+   * Histórico de desativados. Os cartões listados são só os que estão em
+   * blocos ativos — os de um bloco desativado voltam com o próprio bloco,
+   * por isso não são repetidos aqui.
+   */
+  const archive = useMemo(() => {
+    const projects = workspace.projects.filter((p) => !isActive(p));
+    const blocks = columns.filter((c) => !isActive(c));
+    const cards = columns
+      .filter(isActive)
+      .flatMap((col) =>
+        col.cards.filter((c) => !isActive(c)).map((card) => ({ col, card }))
+      );
+    return {
+      projects,
+      blocks,
+      cards,
+      total: projects.length + blocks.length + cards.length,
+    };
+  }, [workspace.projects, columns]);
   const [isEditingBoardTitle, setIsEditingBoardTitle] = useState(false);
   const boardTitleSnapshot = useRef(DEFAULT_BOARD_TITLE);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -158,12 +198,16 @@ export default function KanbanApp() {
     }
   }, [isEditingBoardTitle]);
 
+  // Depende só do id da coluna em edição, não do objeto `editingColumn`:
+  // cada tecla cria um objeto novo, e com `[editingColumn]` o efeito voltava a
+  // correr a cada tecla, selecionando o texto todo — a tecla seguinte apagava-o.
+  const editingColumnId = editingColumn?.colId ?? null;
   useEffect(() => {
-    if (editingColumn) {
+    if (editingColumnId) {
       columnInputRef.current?.focus();
       columnInputRef.current?.select();
     }
-  }, [editingColumn]);
+  }, [editingColumnId]);
 
   // ============================================================================
   // FUNÇÃO CENTRAL PARA ATUALIZAR E SALVAR LOCALMENTE
@@ -256,29 +300,6 @@ export default function KanbanApp() {
     setBoardTitle(trimmed);
   };
 
-  const deleteActiveProject = () => {
-    if (workspace.projects.length <= 1) {
-      window.alert("Tem de existir pelo menos um projeto.");
-      return;
-    }
-    if (
-      !window.confirm(
-        "Apagar este projeto? Esta ação não pode ser desfeita."
-      )
-    )
-      return;
-    setWorkspace((w) => {
-      const filtered = w.projects.filter((p) => p.id !== w.activeProjectId);
-      const next: Workspace = {
-        projects: filtered,
-        activeProjectId: filtered[0].id,
-      };
-      saveWorkspaceToLocal(next);
-      scheduleSaveToCloud(next, isDarkRef.current);
-      return next;
-    });
-  };
-
   const openEditColumn = (colId: string, title: string) => {
     setIsEditingBoardTitle(false);
     columnTitleSnapshot.current = title;
@@ -354,7 +375,6 @@ export default function KanbanApp() {
   const openEdit = (colId: string, card: Card) => {
     setEditingColumn(null);
     setEditingCard({ colId, card: { ...card } });
-    setConfirmDelete(false);
   };
 
   const saveEdit = () => {
@@ -376,22 +396,89 @@ export default function KanbanApp() {
     setEditingCard(null);
   };
 
-  const handleDelete = () => {
-    if (!editingCard) return;
-    const { colId, card: delCard } = editingCard;
+  // ============================================================================
+  // DESATIVAR / REATIVAR (substitui o apagar — nada é removido de vez)
+  // ============================================================================
+
+  /** Devolve o item sem os campos de desativação, ou seja, ativo outra vez. */
+  const reactivated = <T extends Disableable>(x: T): T => {
+    const { disabled: _d, disabledAt: _a, ...rest } = x;
+    return rest as T;
+  };
+
+  const disabledNow = <T extends Disableable>(x: T): T => ({
+    ...x,
+    disabled: true,
+    disabledAt: new Date().toISOString(),
+  });
+
+  const commitWorkspace = (updater: (w: Workspace) => Workspace) => {
+    setWorkspace((w) => {
+      const next = updater(w);
+      saveWorkspaceToLocal(next);
+      scheduleSaveToCloud(next, isDarkRef.current);
+      return next;
+    });
+  };
+
+  const setCardDisabled = (colId: string, cardId: string, off: boolean) => {
     updateColumns((prev) =>
-      prev.map((col) => {
-        if (col.id === colId) {
-          return {
-            ...col,
-            cards: col.cards.filter((c) => c.id !== delCard.id),
-          };
-        }
-        return col;
-      })
+      prev.map((col) =>
+        col.id === colId
+          ? {
+              ...col,
+              cards: col.cards.map((c) =>
+                c.id === cardId ? (off ? disabledNow(c) : reactivated(c)) : c
+              ),
+            }
+          : col
+      )
     );
+  };
+
+  const disableEditingCard = () => {
+    if (!editingCard) return;
+    setCardDisabled(editingCard.colId, editingCard.card.id, true);
     setEditingCard(null);
-    setConfirmDelete(false);
+  };
+
+  const setColumnDisabled = (colId: string, off: boolean) => {
+    if (off && activeColumns.length <= 1) {
+      window.alert("Tem de existir pelo menos um bloco ativo.");
+      return;
+    }
+    updateColumns((prev) =>
+      prev.map((col) =>
+        col.id === colId ? (off ? disabledNow(col) : reactivated(col)) : col
+      )
+    );
+    if (off && editingColumn?.colId === colId) setEditingColumn(null);
+  };
+
+  const disableActiveProject = () => {
+    if (activeProjects.length <= 1) {
+      window.alert("Tem de existir pelo menos um quadro ativo.");
+      return;
+    }
+    commitWorkspace((w) => {
+      const projects = w.projects.map((p) =>
+        p.id === w.activeProjectId ? disabledNow(p) : p
+      );
+      const nextActive = projects.find(
+        (p) => isActive(p) && p.id !== w.activeProjectId
+      );
+      return {
+        projects,
+        activeProjectId: nextActive?.id ?? w.activeProjectId,
+      };
+    });
+  };
+
+  const restoreProject = (id: string) => {
+    commitWorkspace((w) => ({
+      projects: w.projects.map((p) => (p.id === id ? reactivated(p) : p)),
+      activeProjectId: id,
+    }));
   };
 
   const addNewCard = (colId: string) => {
@@ -424,38 +511,6 @@ export default function KanbanApp() {
     setTimeout(() => {
       openEditColumn(newId, "Nova coluna");
     }, 0);
-  };
-
-  const deleteCardQuick = (colId: string, cardId: string) => {
-    if (!window.confirm("Apagar este cartão?")) return;
-    updateColumns((prev) =>
-      prev.map((col) =>
-        col.id === colId
-          ? {
-              ...col,
-              cards: col.cards.filter((c) => c.id !== cardId),
-            }
-          : col
-      )
-    );
-    if (editingCard?.card.id === cardId && editingCard.colId === colId) {
-      setEditingCard(null);
-      setConfirmDelete(false);
-    }
-  };
-
-  const deleteColumnBlock = (colId: string, cardCount: number) => {
-    if (columns.length <= 1) {
-      window.alert("Tem de existir pelo menos uma coluna.");
-      return;
-    }
-    const msg =
-      cardCount > 0
-        ? `Apagar esta coluna e os ${cardCount} cartão(ões)?`
-        : "Apagar esta coluna vazia?";
-    if (!window.confirm(msg)) return;
-    updateColumns((prev) => prev.filter((c) => c.id !== colId));
-    if (editingColumn?.colId === colId) setEditingColumn(null);
   };
 
   // ============================================================================
@@ -509,7 +564,7 @@ export default function KanbanApp() {
             className={`rounded-xl px-3 py-2.5 text-sm border outline-none min-w-[200px] flex-1 max-w-md ${theme.inputBg} ${theme.cardBorder} ${theme.text}`}
             aria-label="Selecionar projeto"
           >
-            {workspace.projects.map((p) => (
+            {activeProjects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -526,12 +581,12 @@ export default function KanbanApp() {
           </button>
           <button
             type="button"
-            onClick={deleteActiveProject}
-            className={`p-2.5 rounded-xl shrink-0 ${theme.btnSecondary} text-red-500 hover:opacity-90`}
-            title="Apagar projeto atual"
-            aria-label="Apagar projeto atual"
+            onClick={disableActiveProject}
+            className={`p-2.5 rounded-xl shrink-0 ${theme.btnSecondary}`}
+            title="Desativar este quadro (fica no histórico)"
+            aria-label="Desativar quadro atual"
           >
-            <Trash2 size={18} />
+            <Archive size={18} />
           </button>
         </div>
 
@@ -622,7 +677,7 @@ export default function KanbanApp() {
 
         {/* BOARD (COLUNAS) */}
         <div className="flex-1 flex gap-5 overflow-x-auto pb-8 items-start">
-          {columns.map((col) => (
+          {activeColumns.map((col) => (
             <div
               key={col.id}
               className={`flex-shrink-0 w-[320px] rounded-2xl border flex flex-col shadow-sm transition-colors duration-300 ${theme.cardBg} ${theme.cardBorder}`}
@@ -682,24 +737,24 @@ export default function KanbanApp() {
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={() => deleteColumnBlock(col.id, col.cards.length)}
-                    className={`p-1.5 rounded-lg shrink-0 text-red-500/90 hover:text-red-500 hover:bg-red-500/10 transition-colors`}
-                    aria-label="Apagar coluna"
-                    title="Apagar esta coluna"
+                    onClick={() => setColumnDisabled(col.id, true)}
+                    className={`p-1.5 rounded-lg shrink-0 transition-colors ${theme.textMuted} hover:${theme.inputBg}`}
+                    aria-label="Desativar bloco"
+                    title="Desativar este bloco (fica no histórico)"
                   >
-                    <Trash2 size={16} />
+                    <Archive size={16} />
                   </button>
                   <span
                     className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium ${theme.inputBg} ${theme.textMuted}`}
                   >
-                    {col.cards.length}
+                    {col.cards.filter(isActive).length}
                   </span>
                 </div>
               </div>
 
               {/* Área dos Cartões */}
               <div className="p-3 pt-0 flex-1 overflow-y-auto flex flex-col gap-3 min-h-[150px]">
-                {col.cards.map((card) => (
+                {col.cards.filter(isActive).map((card) => (
                   <div
                     key={card.id}
                     draggable
@@ -709,15 +764,29 @@ export default function KanbanApp() {
                     style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-sm leading-tight pr-6">
+                      <h3 className="font-semibold text-sm leading-tight pr-14">
                         {card.title}
                       </h3>
-                      <button
-                        onClick={() => openEdit(col.id, card)}
-                        className={`absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity ${theme.textMuted} hover:${theme.text}`}
+                      <div
+                        className={`absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-opacity ${theme.textMuted}`}
                       >
-                        <Edit3 size={16} />
-                      </button>
+                        <button
+                          onClick={() => openEdit(col.id, card)}
+                          className={`hover:${theme.text}`}
+                          aria-label="Editar cartão"
+                          title="Editar cartão"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        <button
+                          onClick={() => setCardDisabled(col.id, card.id, true)}
+                          className={`hover:${theme.text}`}
+                          aria-label="Desativar cartão"
+                          title="Desativar este cartão (fica no histórico)"
+                        >
+                          <Archive size={16} />
+                        </button>
+                      </div>
                     </div>
                     <pre
                       className={`text-[13px] whitespace-pre-wrap font-sans leading-relaxed opacity-80`}
@@ -752,6 +821,77 @@ export default function KanbanApp() {
             </span>
           </button>
         </div>
+
+        {/* ÁREA DE DESATIVADOS (histórico) */}
+        <section className="mt-10 w-full">
+          <button
+            type="button"
+            onClick={() => setShowArchive((v) => !v)}
+            className={`flex items-center gap-2 text-sm font-semibold ${theme.textMuted} hover:${theme.text} transition-colors`}
+            aria-expanded={showArchive}
+            aria-controls="lista-desativados"
+          >
+            {showArchive ? (
+              <ChevronDown size={16} />
+            ) : (
+              <ChevronRight size={16} />
+            )}
+            <Archive size={16} />
+            Desativados
+            <span
+              className={`text-[11px] py-0.5 px-2.5 rounded-full font-medium ${theme.inputBg}`}
+            >
+              {archive.total}
+            </span>
+          </button>
+
+          {showArchive && (
+            <div id="lista-desativados" className="mt-4 flex flex-col gap-2">
+              {archive.total === 0 && (
+                <p className={`text-sm ${theme.textMuted}`}>
+                  Nada desativado por agora. O que desativares fica aqui e pode
+                  ser reativado a qualquer momento.
+                </p>
+              )}
+
+              {archive.projects.map((p) => (
+                <ArchiveRow
+                  key={"proj-" + p.id}
+                  theme={theme}
+                  kind="Quadro"
+                  label={p.name}
+                  detail={`${p.columns.filter(isActive).length} bloco(s)`}
+                  at={p.disabledAt}
+                  onRestore={() => restoreProject(p.id)}
+                />
+              ))}
+
+              {archive.blocks.map((c) => (
+                <ArchiveRow
+                  key={"col-" + c.id}
+                  theme={theme}
+                  kind="Bloco"
+                  label={c.title}
+                  detail={`${c.cards.filter(isActive).length} cartão(ões)`}
+                  at={c.disabledAt}
+                  onRestore={() => setColumnDisabled(c.id, false)}
+                />
+              ))}
+
+              {archive.cards.map(({ col, card }) => (
+                <ArchiveRow
+                  key={"card-" + card.id}
+                  theme={theme}
+                  kind="Cartão"
+                  label={card.title}
+                  detail={`em "${col.title}"`}
+                  at={card.disabledAt}
+                  onRestore={() => setCardDisabled(col.id, card.id, false)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* MODAL DE EDIÇÃO */}
         {editingCard && (
@@ -813,31 +953,14 @@ export default function KanbanApp() {
               </div>
 
               <div className="p-6 pt-8 flex justify-between items-center">
-                {/* Botão Apagar Inteligente */}
-                {confirmDelete ? (
-                  <div className="flex items-center gap-2 bg-red-500/10 text-red-500 p-1 pl-3 rounded-full text-sm font-medium">
-                    <span>Certeza?</span>
-                    <button
-                      onClick={handleDelete}
-                      className="bg-red-500 text-white px-3 py-1.5 rounded-full hover:bg-red-600 transition-colors"
-                    >
-                      Sim
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(false)}
-                      className="px-2 py-1.5 hover:text-red-600"
-                    >
-                      Não
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmDelete(true)}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-colors text-sm font-medium text-red-500 hover:bg-red-500/10`}
-                  >
-                    <Trash2 size={16} /> Apagar
-                  </button>
-                )}
+                {/* Desativar: reversível, por isso não pede confirmação */}
+                <button
+                  onClick={disableEditingCard}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full transition-colors text-sm font-medium ${theme.textMuted} hover:${theme.inputBg}`}
+                  title="Desativar este cartão (fica no histórico)"
+                >
+                  <Archive size={16} /> Desativar
+                </button>
 
                 <button
                   onClick={saveEdit}
@@ -851,5 +974,65 @@ export default function KanbanApp() {
         )}
       </div>
     </>
+  );
+}
+
+// ============================================================================
+// LINHA DO HISTÓRICO DE DESATIVADOS
+// ============================================================================
+
+function formatDisabledAt(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("pt-PT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function ArchiveRow({
+  theme,
+  kind,
+  label,
+  detail,
+  at,
+  onRestore,
+}: {
+  theme: ThemeTokens;
+  kind: "Quadro" | "Bloco" | "Cartão";
+  label: string;
+  detail: string;
+  at?: string;
+  onRestore: () => void;
+}) {
+  const when = formatDisabledAt(at);
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-xl border px-4 py-3 opacity-75 hover:opacity-100 transition-opacity ${theme.cardBg} ${theme.cardBorder}`}
+    >
+      <span
+        className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full shrink-0 ${theme.inputBg} ${theme.textMuted}`}
+      >
+        {kind}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate line-through decoration-1">
+          {label}
+        </p>
+        <p className={`text-[11px] truncate ${theme.textMuted}`}>
+          {detail}
+          {when && ` • desativado em ${when}`}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRestore}
+        className={`flex items-center gap-2 text-xs font-medium px-3 py-2 rounded-full shrink-0 ${theme.btnSecondary}`}
+        title="Reativar"
+      >
+        <ArchiveRestore size={14} /> Reativar
+      </button>
+    </div>
   );
 }
