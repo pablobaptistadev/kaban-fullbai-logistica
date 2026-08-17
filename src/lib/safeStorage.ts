@@ -38,6 +38,14 @@ export function writeLocal(key: string, value: string): boolean {
   }
 }
 
+export function removeLocal(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
+  }
+}
+
 /** True se o browser deixa mesmo escrever (falso em navegação privada). */
 export function isStorageWritable(): boolean {
   const probe = "__kanban_probe__";

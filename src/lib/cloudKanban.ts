@@ -1,18 +1,14 @@
 import { supabase, supabaseConfigured } from "./supabase";
 import type { Workspace } from "../types/kanban";
-import { defaultWorkspaceRoadmap } from "./workspaceStorage";
-import { readLocal, writeLocal } from "./safeStorage";
 
-export const DEVICE_ID_KEY = "kanban_cloud_device_id_v1";
-
-export function getOrCreateDeviceId(): string {
-  let id = readLocal(DEVICE_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    writeLocal(DEVICE_ID_KEY, id);
-  }
-  return id;
-}
+/**
+ * O quadro é guardado por UTILIZADOR autenticado — uma linha por `user_id`,
+ * não por browser. É isso que faz a sincronização entre dispositivos: entrar
+ * com a mesma conta no telemóvel e no computador abre o mesmo quadro.
+ *
+ * (Antes a linha era identificada por um UUID aleatório gerado em cada
+ * browser, por isso cada dispositivo via um quadro diferente.)
+ */
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -22,6 +18,12 @@ function activeSnapshot(w: Workspace) {
     board_title: active?.boardTitle ?? "Roadmap Logística",
     columns: active?.columns ?? [],
   };
+}
+
+async function currentUserId(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user.id ?? null;
 }
 
 export function scheduleSaveToCloud(
@@ -35,24 +37,28 @@ export function scheduleSaveToCloud(
   }
 
   const client = supabase;
-
   if (saveTimer) clearTimeout(saveTimer);
 
   saveTimer = setTimeout(async () => {
     saveTimer = null;
-    const id = getOrCreateDeviceId();
-    const legacy = activeSnapshot(workspace);
     try {
+      const userId = await currentUserId();
+      // Sem sessão não há onde gravar; fica só o local até haver login.
+      if (!userId) {
+        onDone?.(null);
+        return;
+      }
+      const legacy = activeSnapshot(workspace);
       const { error } = await client.from("kanban_board").upsert(
         {
-          id,
+          user_id: userId,
           board_title: legacy.board_title,
           columns: legacy.columns,
           theme_dark: themeDark,
           workspace,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "id" }
+        { onConflict: "user_id" }
       );
       onDone?.(error ? new Error(error.message) : null);
     } catch (e) {
@@ -61,17 +67,23 @@ export function scheduleSaveToCloud(
   }, 750);
 }
 
+/**
+ * Lê o quadro do utilizador autenticado.
+ * `null` = sem sessão, ou o utilizador ainda não tem quadro guardado.
+ */
 export async function loadFromCloud(): Promise<{
   workspace: Workspace;
   themeDark: boolean;
 } | null> {
   if (!supabaseConfigured || !supabase) return null;
 
-  const id = getOrCreateDeviceId();
+  const userId = await currentUserId();
+  if (!userId) return null;
+
   const { data, error } = await supabase
     .from("kanban_board")
     .select("board_title, columns, theme_dark, workspace")
-    .eq("id", id)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (error) throw error;
@@ -87,22 +99,25 @@ export async function loadFromCloud(): Promise<{
     return { workspace: rawWs, themeDark };
   }
 
+  // Formato antigo: uma única lista de colunas.
   if (data.columns && Array.isArray(data.columns)) {
     const pid = crypto.randomUUID();
     const title = data.board_title ?? "Fluxo Logístico";
-    const workspace: Workspace = {
-      projects: [
-        {
-          id: pid,
-          name: title,
-          boardTitle: title,
-          columns: data.columns as Workspace["projects"][0]["columns"],
-        },
-      ],
-      activeProjectId: pid,
+    return {
+      workspace: {
+        projects: [
+          {
+            id: pid,
+            name: title,
+            boardTitle: title,
+            columns: data.columns as Workspace["projects"][0]["columns"],
+          },
+        ],
+        activeProjectId: pid,
+      },
+      themeDark,
     };
-    return { workspace, themeDark };
   }
 
-  return { workspace: defaultWorkspaceRoadmap(), themeDark };
+  return null;
 }

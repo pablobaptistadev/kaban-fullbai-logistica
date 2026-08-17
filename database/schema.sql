@@ -1,51 +1,55 @@
 -- =============================================================================
--- Kanban Roadmap Logística — esquema PostgreSQL (ex.: Supabase SQL Editor)
+-- Kanban Roadmap — esquema PostgreSQL (Supabase)
 -- =============================================================================
--- 1. Cria um projeto em https://supabase.com
--- 2. Em "SQL" → "New query" → cola este ficheiro → Run
--- 3. Em "Project Settings → API" copia URL e anon key para .env.local:
---    VITE_SUPABASE_URL=...
---    VITE_SUPABASE_ANON_KEY=...
+-- O quadro é guardado POR UTILIZADOR autenticado: uma linha por user_id.
+-- É isso que sincroniza entre dispositivos — entrar com a mesma conta no
+-- telemóvel e no computador abre o mesmo quadro.
 --
--- Se já criaste a tabela antes sem theme_dark, executa também:
---   database/migration_theme_dark.sql
--- Políticas abaixo permitem leitura/escrita anónima: ok para demo; em produção
--- uses autenticação Supabase e políticas mais restritas.
+-- (Versões anteriores guardavam por browser, com um UUID aleatório gerado
+-- em cada dispositivo. Nunca sincronizava: cada browser via um quadro seu.)
+--
+-- Aplicar: SQL Editor → New query → colar → Run.
 -- =============================================================================
 
 create table if not exists public.kanban_board (
-  id uuid primary key,
-  board_title text not null default 'Fluxo Logístico',
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  board_title text not null default 'Roadmap Logística',
   columns jsonb not null default '[]'::jsonb,
   theme_dark boolean not null default true,
   workspace jsonb,
   updated_at timestamptz not null default now()
 );
 
-comment on table public.kanban_board is 'Estado do quadro Kanban por dispositivo (id = UUID do browser).';
-
-create index if not exists kanban_board_updated_at_idx
-  on public.kanban_board (updated_at desc);
+comment on table public.kanban_board is
+  'Estado do quadro Kanban por utilizador autenticado (user_id = auth.users.id).';
+comment on column public.kanban_board.workspace is
+  'Vários projetos: { projects, activeProjectId }';
 
 alter table public.kanban_board enable row level security;
 
--- Demo: qualquer cliente com anon key pode criar/ler/atualizar qualquer linha.
--- Para produção: substituir por policies com auth.uid() ou desativar inserts públicos.
-drop policy if exists "kanban_select_anon" on public.kanban_board;
-create policy "kanban_select_anon"
+-- Cada utilizador só lê e só escreve a sua própria linha.
+-- Não há policy para `anon`: sem sessão não há acesso nenhum.
+drop policy if exists "kanban_select_proprio" on public.kanban_board;
+create policy "kanban_select_proprio"
   on public.kanban_board for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using ((select auth.uid()) = user_id);
 
-drop policy if exists "kanban_insert_anon" on public.kanban_board;
-create policy "kanban_insert_anon"
+drop policy if exists "kanban_insert_proprio" on public.kanban_board;
+create policy "kanban_insert_proprio"
   on public.kanban_board for insert
-  to anon, authenticated
-  with check (true);
+  to authenticated
+  with check ((select auth.uid()) = user_id);
 
-drop policy if exists "kanban_update_anon" on public.kanban_board;
-create policy "kanban_update_anon"
+drop policy if exists "kanban_update_proprio" on public.kanban_board;
+create policy "kanban_update_proprio"
   on public.kanban_board for update
-  to anon, authenticated
-  using (true)
-  with check (true);
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+drop policy if exists "kanban_delete_proprio" on public.kanban_board;
+create policy "kanban_delete_proprio"
+  on public.kanban_board for delete
+  to authenticated
+  using ((select auth.uid()) = user_id);

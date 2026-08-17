@@ -1,6 +1,6 @@
 import type { Workspace } from "../types/kanban";
 import { createRoadmapLogisticaProject } from "../data/roadmapLogisticaSeed";
-import { readLocal, writeLocal } from "./safeStorage";
+import { readLocal, removeLocal, writeLocal } from "./safeStorage";
 
 export const WORKSPACE_KEY = "kanban_workspace_v1";
 
@@ -28,6 +28,15 @@ export function createBlankProject() {
 export function defaultWorkspaceRoadmap(): Workspace {
   const p = createRoadmapLogisticaProject();
   return { projects: [p], activeProjectId: p.id };
+}
+
+/**
+ * True se este browser já tem um quadro guardado. Serve para não enviar para
+ * a nuvem um quadro-semente acabado de gerar: se um browser vazio entrasse
+ * primeiro, carimbava a semente por cima do quadro real de outro dispositivo.
+ */
+export function hasLocalBoard(): boolean {
+  return Boolean(readLocal(WORKSPACE_KEY) || readLocal(LEGACY_COL_KEY));
 }
 
 /** Migra formato antigo (uma lista de colunas) ou devolve default Roadmap. */
@@ -76,4 +85,12 @@ export function loadWorkspaceFromLocal(): Workspace {
 /** Devolve false se o browser recusou gravar (ex.: navegação privada). */
 export function saveWorkspaceToLocal(w: Workspace): boolean {
   return writeLocal(WORKSPACE_KEY, JSON.stringify(w));
+}
+
+/**
+ * Apaga a cópia local do quadro. Usado no logout, para que a conta seguinte
+ * neste browser não herde o quadro de quem estava antes.
+ */
+export function clearLocalBoard(): void {
+  removeLocal(WORKSPACE_KEY);
 }

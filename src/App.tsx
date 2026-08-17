@@ -9,6 +9,7 @@ import {
   Loader2,
   FolderPlus,
   LayoutGrid,
+  LogOut,
   Archive,
   ArchiveRestore,
   ChevronDown,
@@ -23,12 +24,15 @@ import type {
 } from "./types/kanban";
 import { isActive } from "./types/kanban";
 import { supabaseConfigured } from "./lib/supabase";
+import { useAuth, signOut } from "./lib/auth";
+import LoginScreen from "./components/LoginScreen";
 import { isStorageWritable, readLocal, writeLocal } from "./lib/safeStorage";
 import { loadFromCloud, scheduleSaveToCloud } from "./lib/cloudKanban";
 import {
   loadWorkspaceFromLocal,
   saveWorkspaceToLocal,
   createBlankProject,
+  hasLocalBoard,
 } from "./lib/workspaceStorage";
 
 /** Tokens de estilo do tema, partilhados com os subcomponentes. */
@@ -59,6 +63,11 @@ export default function KanbanApp() {
   const [showArchive, setShowArchive] = useState(false);
   // Falso em navegação privada do Safari e afins: aí nada fica guardado.
   const [canStore] = useState(isStorageWritable);
+  const auth = useAuth();
+  // Só carrega o quadro quando já se sabe quem (ou se) está autenticado.
+  const podeCarregar =
+    auth.status === "desligado" || auth.status === "dentro";
+  const userId = auth.status === "dentro" ? auth.session.user.id : null;
   const [isSaving, setIsSaving] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [boardTitle, setBoardTitle] = useState(DEFAULT_BOARD_TITLE);
@@ -133,7 +142,9 @@ export default function KanbanApp() {
   // (o Tailwind é compilado no build — ver src/styles.css e tailwind.config.js)
   // ============================================================================
   useEffect(() => {
+    if (!podeCarregar) return;
     let cancelled = false;
+    setIsLoaded(false);
 
     async function init() {
       if (supabaseConfigured) {
@@ -158,6 +169,7 @@ export default function KanbanApp() {
         }
       }
 
+      const jaTinhaQuadroLocal = hasLocalBoard();
       const ws = loadWorkspaceFromLocal();
       const ap = ws.projects.find((p) => p.id === ws.activeProjectId);
       let themeDark = true;
@@ -171,7 +183,10 @@ export default function KanbanApp() {
       setIsDark(themeDark);
       isDarkRef.current = themeDark;
 
-      if (supabaseConfigured) {
+      // Só envia para a nuvem o que é mesmo deste browser. Um quadro-semente
+      // acabado de gerar fica por enviar, para não carimbar o quadro real que
+      // outro dispositivo ainda não sincronizou.
+      if (supabaseConfigured && jaTinhaQuadroLocal) {
         scheduleSaveToCloud(ws, themeDark);
       }
 
@@ -183,7 +198,8 @@ export default function KanbanApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // Recarrega ao entrar/sair: cada conta tem o seu quadro.
+  }, [podeCarregar, userId]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -547,6 +563,10 @@ export default function KanbanApp() {
         modalOverlay: "bg-black/20",
       };
 
+  // Ainda a verificar a sessão: nada de piscar o quadro nem o login.
+  if (auth.status === "a-verificar") return null;
+  if (auth.status === "fora") return <LoginScreen theme={theme} />;
+
   if (!isLoaded) return null;
 
   return (
@@ -588,6 +608,26 @@ export default function KanbanApp() {
           >
             <Archive size={18} />
           </button>
+
+          {auth.status === "dentro" && (
+            <div className="flex items-center gap-2 ml-auto min-w-0">
+              <span
+                className={`text-xs truncate max-w-[180px] ${theme.textMuted}`}
+                title={auth.session.user.email ?? ""}
+              >
+                {auth.session.user.email}
+              </span>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className={`p-2.5 rounded-xl shrink-0 ${theme.btnSecondary}`}
+                title="Sair"
+                aria-label="Sair da conta"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* HEADER */}

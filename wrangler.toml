@@ -1,6 +1,6 @@
 # Cloudflare Workers — site estático (SPA) servido por Workers Static Assets.
 # Deploy: npm run build && npx wrangler deploy
-name = "roadmap-logistica"
+name = "roadmap-apps"
 compatibility_date = "2026-08-15"
 
 [assets]
