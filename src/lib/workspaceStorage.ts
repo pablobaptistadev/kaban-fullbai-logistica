@@ -1,5 +1,6 @@
 import type { Workspace } from "../types/kanban";
-import { createFullbaiLogisticaProject } from "../data/fullbaiLogisticaSeed";
+import { createRoadmapLogisticaProject } from "../data/roadmapLogisticaSeed";
+import { readLocal, removeLocal, writeLocal } from "./safeStorage";
 
 export const WORKSPACE_KEY = "kanban_workspace_v1";
 
@@ -24,14 +25,23 @@ export function createBlankProject() {
   };
 }
 
-export function defaultWorkspaceFullbai(): Workspace {
-  const p = createFullbaiLogisticaProject();
+export function defaultWorkspaceRoadmap(): Workspace {
+  const p = createRoadmapLogisticaProject();
   return { projects: [p], activeProjectId: p.id };
 }
 
-/** Migra formato antigo (uma lista de colunas) ou devolve default Fullbai. */
+/**
+ * True se este browser já tem um quadro guardado. Serve para não enviar para
+ * a nuvem um quadro-semente acabado de gerar: se um browser vazio entrasse
+ * primeiro, carimbava a semente por cima do quadro real de outro dispositivo.
+ */
+export function hasLocalBoard(): boolean {
+  return Boolean(readLocal(WORKSPACE_KEY) || readLocal(LEGACY_COL_KEY));
+}
+
+/** Migra formato antigo (uma lista de colunas) ou devolve default Roadmap. */
 export function loadWorkspaceFromLocal(): Workspace {
-  const raw = localStorage.getItem(WORKSPACE_KEY);
+  const raw = readLocal(WORKSPACE_KEY);
   if (raw) {
     try {
       const w = JSON.parse(raw) as Workspace;
@@ -46,9 +56,9 @@ export function loadWorkspaceFromLocal(): Workspace {
     }
   }
 
-  const oldCols = localStorage.getItem(LEGACY_COL_KEY);
+  const oldCols = readLocal(LEGACY_COL_KEY);
   const oldTitle =
-    localStorage.getItem(LEGACY_TITLE_KEY)?.trim() || "Fluxo Logístico";
+    readLocal(LEGACY_TITLE_KEY)?.trim() || "Fluxo Logístico";
   if (oldCols) {
     try {
       const columns = JSON.parse(oldCols);
@@ -69,9 +79,18 @@ export function loadWorkspaceFromLocal(): Workspace {
     }
   }
 
-  return defaultWorkspaceFullbai();
+  return defaultWorkspaceRoadmap();
 }
 
-export function saveWorkspaceToLocal(w: Workspace): void {
-  localStorage.setItem(WORKSPACE_KEY, JSON.stringify(w));
+/** Devolve false se o browser recusou gravar (ex.: navegação privada). */
+export function saveWorkspaceToLocal(w: Workspace): boolean {
+  return writeLocal(WORKSPACE_KEY, JSON.stringify(w));
+}
+
+/**
+ * Apaga a cópia local do quadro. Usado no logout, para que a conta seguinte
+ * neste browser não herde o quadro de quem estava antes.
+ */
+export function clearLocalBoard(): void {
+  removeLocal(WORKSPACE_KEY);
 }

@@ -2,7 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
-// base relativo para GitHub Pages (funciona em /<repo>/)
+// GitHub Pages serve em /<repo>/ → base relativo ("./").
+// Cloudflare Workers serve na raiz → `vite build --base=/` (script build:cf).
 export default defineConfig({
   base: "./",
   plugins: [react()],
